@@ -47,6 +47,7 @@ add_library(xmss STATIC
     src/ltree.c
     src/treehash.c
     src/bds.c
+    src/bds_serialize.c
     src/xmss.c
 )
 

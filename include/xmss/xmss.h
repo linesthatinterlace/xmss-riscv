@@ -156,6 +156,44 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
               uint8_t *sk, xmss_bds_state *state, uint32_t bds_k);
 
 /* ====================================================================
+ * BDS state serialization
+ * ==================================================================== */
+
+/**
+ * xmss_bds_serialized_size() - Compute serialized BDS state size.
+ *
+ * Returns the number of bytes needed to serialize a BDS state for the
+ * given parameter set and bds_k value.
+ */
+uint32_t xmss_bds_serialized_size(const xmss_params *p, uint32_t bds_k);
+
+/**
+ * xmss_bds_serialize() - Serialize BDS state to a byte buffer.
+ *
+ * @p:      Parameter set.
+ * @buf:    Output buffer (xmss_bds_serialized_size() bytes).
+ * @state:  BDS state to serialize.
+ * @bds_k:  Retain parameter (same as used in keygen).
+ *
+ * Returns XMSS_OK on success.
+ */
+int xmss_bds_serialize(const xmss_params *p, uint8_t *buf,
+                       const xmss_bds_state *state, uint32_t bds_k);
+
+/**
+ * xmss_bds_deserialize() - Deserialize BDS state from a byte buffer.
+ *
+ * @p:      Parameter set.
+ * @state:  Output BDS state (caller-allocated).
+ * @buf:    Input buffer (xmss_bds_serialized_size() bytes).
+ * @bds_k:  Retain parameter (same as used in keygen).
+ *
+ * Returns XMSS_OK on success.
+ */
+int xmss_bds_deserialize(const xmss_params *p, xmss_bds_state *state,
+                         const uint8_t *buf, uint32_t bds_k);
+
+/* ====================================================================
  * Naive API (gated behind XMSS_NAIVE_AUTH_PATH)
  *
  * These use O(h * 2^h) auth path computation per signature.

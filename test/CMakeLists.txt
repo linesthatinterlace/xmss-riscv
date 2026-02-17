@@ -63,3 +63,12 @@ target_include_directories(test_bds PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 add_test(NAME test_bds COMMAND test_bds)
+
+# test_bds_serial (BDS serialization round-trip tests)
+add_executable(test_bds_serial test_bds_serial.c)
+target_link_libraries(test_bds_serial xmss)
+target_include_directories(test_bds_serial PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME test_bds_serial COMMAND test_bds_serial)

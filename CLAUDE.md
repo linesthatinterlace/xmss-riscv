@@ -108,6 +108,7 @@ These are enforced and must not be broken by any change:
 | `test_xmss` | BDS keygen/sign/verify roundtrip (3 param sets); bit-flip and wrong-message rejection; idx increment; sequential signing (20 sigs) |
 | `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets (advances BDS to idx=512 for sig fingerprint) |
 | `test_bds` | BDS-specific: bds_k validation (odd/too-large rejected); roundtrip and sequential signing with bds_k=2 and bds_k=4 |
+| `test_bds_serial` | BDS serialization: round-trip after keygen, mid-signing, byte-exact, size consistency, multiple param sets, bds_k=2 |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
