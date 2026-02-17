@@ -1,4 +1,5 @@
 build/
+build-rel/
 build-rv/
 *.o
 *.a
