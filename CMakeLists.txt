@@ -1,0 +1,62 @@
+cmake_minimum_required(VERSION 3.16)
+project(xmss_riscv C)
+
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
+
+# Strict warnings; -Wvla enforces Jasmin Rule J1 (no VLAs)
+add_compile_options(
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wvla
+    -Wmissing-prototypes
+    -Wshadow
+)
+
+# Debug build: sanitizers
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if(NOT CMAKE_CROSSCOMPILING)
+        add_compile_options(-fsanitize=address,undefined)
+        add_link_options(-fsanitize=address,undefined)
+    endif()
+endif()
+
+# -----------------------------------------------------------------------
+# Include paths
+# -----------------------------------------------------------------------
+include_directories(
+    ${CMAKE_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/hash
+)
+
+# -----------------------------------------------------------------------
+# XMSS library
+# -----------------------------------------------------------------------
+add_library(xmss STATIC
+    src/params.c
+    src/address.c
+    src/utils.c
+    src/hash/sha2_local.c
+    src/hash/shake_local.c
+    src/hash/xmss_hash.c
+    src/wots.c
+    src/ltree.c
+    src/treehash.c
+    src/xmss.c
+)
+
+target_include_directories(xmss PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/hash
+)
+
+# -----------------------------------------------------------------------
+# Tests
+# -----------------------------------------------------------------------
+enable_testing()
+add_subdirectory(test)
