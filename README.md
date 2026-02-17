@@ -1,0 +1,138 @@
+# xmss-riscv
+
+RFC 8391 XMSS implementation in C99, targeting RISC-V 64-bit with a clear path to a [Jasmin](https://github.com/jasmin-lang/jasmin) port.
+
+## What this is
+
+A from-scratch implementation of **XMSS** (eXtended Merkle Signature Scheme) as specified in [RFC 8391](https://www.rfc-editor.org/rfc/rfc8391). XMSS is a stateful hash-based signature scheme and a NIST-approved post-quantum algorithm (SP 800-208).
+
+Goals:
+- RFC 8391-compliant, all 12 standard parameter sets
+- No external dependencies — SHA-2 and SHAKE are vendored and stack-based (no `malloc`)
+- Cross-compiles to RISC-V 64-bit; tested under `qemu-riscv64`
+- Structured for a future Jasmin port (hash dispatch isolated to one file)
+
+XMSS-MT (multi-tree) and BDS state are deferred; the groundwork (layer/tree address fields, `d` parameter) is already in place.
+
+## Parameter sets
+
+All 12 RFC 8391 XMSS parameter sets are supported:
+
+| OID | Name | n | h | Hash |
+|-----|------|---|---|------|
+| 0x01 | XMSS-SHA2_10_256  | 32 | 10 | SHA-256 |
+| 0x02 | XMSS-SHA2_16_256  | 32 | 16 | SHA-256 |
+| 0x03 | XMSS-SHA2_20_256  | 32 | 20 | SHA-256 |
+| 0x04 | XMSS-SHA2_10_512  | 64 | 10 | SHA-512 |
+| 0x05 | XMSS-SHA2_16_512  | 64 | 16 | SHA-512 |
+| 0x06 | XMSS-SHA2_20_512  | 64 | 20 | SHA-512 |
+| 0x07 | XMSS-SHAKE_10_256 | 32 | 10 | SHAKE-128 |
+| 0x08 | XMSS-SHAKE_16_256 | 32 | 16 | SHAKE-128 |
+| 0x09 | XMSS-SHAKE_20_256 | 32 | 20 | SHAKE-128 |
+| 0x0A | XMSS-SHAKE_10_512 | 64 | 10 | SHAKE-256 |
+| 0x0B | XMSS-SHAKE_16_512 | 64 | 16 | SHAKE-256 |
+| 0x0C | XMSS-SHAKE_20_512 | 64 | 20 | SHAKE-256 |
+
+## Building
+
+Requires CMake ≥ 3.16 and a C99 compiler.
+
+```bash
+# Native (x86 or any host)
+cmake -B build -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+```bash
+# RISC-V cross-compile (requires gcc-riscv64-linux-gnu)
+cmake -B build-rv -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake -DCMAKE_BUILD_TYPE=Release
+cmake --build build-rv
+```
+
+```bash
+# Run under QEMU (requires qemu-user)
+qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_params
+qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_xmss
+```
+
+On Ubuntu, install cross-compilation tools with:
+```bash
+sudo apt-get install gcc-riscv64-linux-gnu qemu-user
+```
+
+## API
+
+```c
+#include <xmss/xmss.h>
+#include <xmss/params.h>
+
+// 1. Select a parameter set
+xmss_params p;
+xmss_params_from_oid(&p, OID_XMSS_SHA2_10_256);
+
+// 2. Allocate key and signature buffers (stack or heap — your choice)
+uint8_t pk[68], sk[134], sig[2498];
+
+// 3. Key generation — supply your own entropy source
+xmss_keygen(&p, pk, sk, my_randombytes);
+
+// 4. Sign — increments the index in sk; persist sk immediately after
+xmss_sign(&p, sig, msg, msglen, sk);
+
+// 5. Verify — returns XMSS_OK or XMSS_ERR_VERIFY
+int ok = xmss_verify(&p, msg, msglen, sig, pk);
+```
+
+Buffer sizes are available from `xmss_params` fields: `p.pk_bytes`, `p.sk_bytes`, `p.sig_bytes`.
+
+**Important**: XMSS is stateful. The leaf index in `sk` is incremented on every call to `xmss_sign`. You must persist the updated `sk` to durable storage before using the signature; reusing an index breaks security.
+
+## Repository structure
+
+```
+include/xmss/      Public headers (xmss.h, params.h, types.h)
+src/
+  hash/
+    hash_iface.h   Internal hash API — the only place backend is selected
+    xmss_hash.c    F, H, H_msg, PRF, PRF_keygen (SHA-2 and SHAKE backends)
+    sha2_local.*   Stack-based SHA-256 / SHA-512 (no malloc)
+    shake_local.*  Stack-based SHAKE-128 / SHAKE-256 (Keccak-f[1600])
+  params.c         OID table + parameter derivation
+  address.c        ADRS typed setters (RFC 8391 §2.7)
+  utils.c          ull_to_bytes, bytes_to_ull, xmss_memzero, ct_memcmp
+  wots.c           WOTS+ (Algorithms 1–6)
+  ltree.c          L-tree (Algorithm 7)
+  treehash.c       TreeHash + auth path + compute_root (Algorithm 9)
+  xmss.c           keygen / sign / verify (Algorithms 10, 11, 14)
+test/              Unit and integration tests
+cmake/             RISC-V cross-compilation toolchain file
+third_party/       Vendored PQClean SHA-2 and fips202 (not used in build;
+                   kept for reference — we use our own stack-based versions)
+```
+
+## Jasmin port
+
+The implementation is structured so that `src/hash/xmss_hash.c` is the sole file that needs to become a Jasmin `.jazz` file per parameter set. All other algorithm files (`wots.c`, `ltree.c`, `treehash.c`, `xmss.c`) call only the five functions declared in `hash_iface.h` and contain no hash-backend logic.
+
+Portability constraints enforced throughout (and checked at compile time):
+
+| Rule | Constraint |
+|------|-----------|
+| J1 | No VLAs (`-Wvla` flag) |
+| J2 | No function pointers in algorithm code |
+| J3 | No `malloc` — stack or caller-supplied buffers only |
+| J4 | No recursion — all algorithms iterative |
+| J5 | All loop bounds are `XMSS_MAX_*` constants or `params->*` fields |
+| J6 | Constant-time for secret-dependent operations (annotated) |
+| J7 | ADRS always passed by pointer; serialised to 32-byte stack buffer for hashing |
+| J8 | One C file per algorithm |
+
+## Errata
+
+Implements RFC 8391 Errata 7900 (SK serialisation byte layout):
+`OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)`
+
+## Licence
+
+Public domain / CC0. The vendored `third_party/` files retain their original licences (PQClean: MIT / public domain).
