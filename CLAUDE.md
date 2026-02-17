@@ -4,26 +4,21 @@ Context for Claude Code when working on this repository.
 
 ## Build commands
 
-```bash
-# Native debug build (with ASan + UBSan)
-cmake -B build -DCMAKE_BUILD_TYPE=Debug
-cmake --build build
+A top-level `Makefile` wraps CMake for convenience:
 
-# Run all tests (Release build recommended — Debug/ASan is very slow for crypto)
-cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
-ctest --test-dir build-rel --output-on-failure
+```bash
+make            # Release build
+make test       # Build + run all tests (~2 min)
+make test-fast  # Build + run only fast tests (params, address, hash, wots)
+make debug      # Debug build (ASan + UBSan — very slow for crypto tests)
+make rv         # RISC-V cross-compile
+make clean      # Remove all build directories
 
 # Run a single test binary directly
 ./build-rel/test/test_params
-./build-rel/test/test_hash
-./build-rel/test/test_wots
 ./build-rel/test/test_xmss   # BDS keygen/sign/verify roundtrip + sequential
 ./build-rel/test/test_kat    # KAT cross-validation (advances BDS to idx=512)
 ./build-rel/test/test_bds    # BDS-specific: bds_k validation, k=2/k=4 roundtrips
-
-# RISC-V cross-compile
-cmake -B build-rv -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake -DCMAKE_BUILD_TYPE=Release
-cmake --build build-rv
 
 # RISC-V execution via QEMU
 qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_params
