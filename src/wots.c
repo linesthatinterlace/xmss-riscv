@@ -55,8 +55,7 @@ static void base_w(const xmss_params *p,
  * Appended to msg array at positions len1..len1+len2-1 in base-w.
  * ==================================================================== */
 static void wots_checksum(const xmss_params *p,
-                          uint32_t *msg_and_csum, /* len1 entries already filled */
-                          const uint8_t *msg_n)
+                          uint32_t *msg_and_csum) /* len1 entries already filled */
 {
     uint64_t csum = 0;
     uint8_t  csum_bytes[8]; /* ceil(len2 * log2_w / 8) <= 8 bytes */
@@ -76,7 +75,6 @@ static void wots_checksum(const xmss_params *p,
 
     ull_to_bytes(csum_bytes, csum_bytes_len, csum);
     base_w(p, msg_and_csum + p->len1, p->len2, csum_bytes);
-    (void)msg_n;
 }
 
 /* ====================================================================
@@ -185,7 +183,7 @@ void wots_sign(const xmss_params *p, uint8_t *sig,
 
     /* Compute base-w message representation */
     base_w(p, lengths, p->len1, msg);
-    wots_checksum(p, lengths, msg);
+    wots_checksum(p, lengths);
 
     /* Expand seed */
     a = *adrs;
@@ -218,7 +216,7 @@ void wots_pk_from_sig(const xmss_params *p, uint8_t *pk,
 
     /* Recompute chain lengths */
     base_w(p, lengths, p->len1, msg);
-    wots_checksum(p, lengths, msg);
+    wots_checksum(p, lengths);
 
     /* Complete chains from lengths[i] to w-1 */
     for (i = 0; i < p->len; i++) {
