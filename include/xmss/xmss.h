@@ -51,7 +51,7 @@ typedef int (*xmss_randombytes_fn)(uint8_t *buf, size_t len);
  *
  * Returns XMSS_OK on success.
  *
- * SK layout (RFC 8391 §4.1.6, Errata 7900):
+ * SK layout (RFC 8391 §4.1.3, Errata 7900):
  *   OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)
  * PK layout:
  *   OID(4) | root(n) | SEED(n)

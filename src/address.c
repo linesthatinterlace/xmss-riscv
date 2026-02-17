@@ -1,12 +1,12 @@
 /**
  * address.c - XMSS ADRS (address) manipulation
  *
- * RFC 8391 §2.7: ADRS is a 32-byte structure of 8 big-endian 32-bit words.
+ * RFC 8391 §2.5: ADRS is a 32-byte structure of 8 big-endian 32-bit words.
  * Words 0-3: layer, tree (64-bit), type.
  * Words 4-7: type-specific fields (zeroed by set_type()).
  *
  * IMPORTANT: set_type() MUST zero words 4-6 to ensure domain separation
- * (RFC 8391 §2.7.3). xmss-reference does NOT do this; we do.
+ * (RFC 8391 §2.5). xmss-reference does NOT do this; we do.
  */
 #include <string.h>
 #include <stdint.h>
@@ -35,7 +35,7 @@ void xmss_adrs_set_tree(xmss_adrs_t *a, uint64_t tree)
 void xmss_adrs_set_type(xmss_adrs_t *a, uint32_t type)
 {
     set_word(a, 3, type);
-    /* RFC 8391 §2.7.3: zero type-specific fields on type change */
+    /* RFC 8391 §2.5: zero type-specific fields on type change */
     a->w[4] = 0;
     a->w[5] = 0;
     a->w[6] = 0;

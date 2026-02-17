@@ -1,7 +1,7 @@
 /**
  * wots.h - WOTS+ internal API
  *
- * RFC 8391 §4.1.2: WOTS+ one-time signature scheme.
+ * RFC 8391 §3.1: WOTS+ one-time signature scheme.
  */
 #ifndef XMSS_WOTS_H
 #define XMSS_WOTS_H

@@ -3,7 +3,7 @@
  *
  * RFC 8391 §4.1, Algorithms 10, 11, 14.
  *
- * SK layout (RFC 8391 §4.1.6, Errata 7900):
+ * SK layout (RFC 8391 §4.1.3, Errata 7900):
  *   OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)
  * PK layout (RFC 8391 §4.1.7):
  *   OID(4) | root(n) | SEED(n)
@@ -113,7 +113,7 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
     ull_to_bytes(sk + sk_off_idx(p), p->idx_bytes, idx + 1);
 
     /* r = PRF(SK_PRF, toByte(idx, 32))
-     * RFC 8391 §4.1.8: r is computed using the PRF with the raw index
+     * RFC 8391 §4.1.9: r is computed using the PRF with the raw index
      * as the 32-byte message input (not via ADRS structure).
      */
     xmss_PRF_idx(p, r, sk_prf, idx);

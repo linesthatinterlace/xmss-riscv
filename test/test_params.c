@@ -1,7 +1,7 @@
 /**
  * test_params.c - Tests for xmss_params OID table and derivation
  *
- * RFC 8391 §5.2: Verifies that all 12 OIDs produce correct derived parameters.
+ * RFC 8391 §5.3: Verifies that all 12 OIDs produce correct derived parameters.
  */
 #include <stdio.h>
 #include <stdint.h>
@@ -25,7 +25,7 @@ typedef struct {
 } expected_params_t;
 
 /*
- * Expected values computed from RFC 8391 §5.2:
+ * Expected values computed from RFC 8391 §5.3:
  *   n=32, w=16: len1=64, len2=3, len=67
  *   n=64, w=16: len1=128, ... wait, n=64 gives len1 = ceil(8*64/4) = 128;
  *               len2 = floor(log2(128*15)/4)+1 = floor(log2(1920)/4)+1
@@ -55,46 +55,46 @@ static const expected_params_t expected[] = {
     /* OID, name, n, w, h, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes
      *
      * All RFC 8391 standard sets use w=16.
+     * For XMSS (d=1), idx_bytes is always 4 (matching xmss-reference).
      *
      * n=32, w=16: len1=ceil(256/4)=64, len2=3, len=67
-     *   idx_bytes: ceil(h/8)
-     *   sig = idx_bytes + n + len*n + h*n = idx_bytes + 32*(1 + 67 + h)
+     *   sig = 4 + 32*(1 + 67 + h)
      *   pk  = 4 + 2n = 68
-     *   sk  = 4 + idx_bytes + 4n = 4 + idx_bytes + 128
+     *   sk  = 4 + 4 + 4n = 136
      *
-     * h=10: idx_bytes=2, sig=2+32+2144+320=2498, sk=134
-     * h=16: idx_bytes=2, sig=2+32+2144+512=2690, sk=134
-     * h=20: idx_bytes=3, sig=3+32+2144+640=2819, sk=135
+     * h=10: sig=4+32*78=2500
+     * h=16: sig=4+32*84=2692
+     * h=20: sig=4+32*88=2820
      *
-     * n=64, w=16: len1=ceil(512/4)=128, len2=3, len=131
-     *   sig = idx_bytes + 64*(1 + 131 + h)
+     * n=64, w=16: len1=128, len2=3, len=131
+     *   sig = 4 + 64*(1 + 131 + h)
      *   pk  = 4 + 2*64 = 132
-     *   sk  = 4 + idx_bytes + 4*64 = 4 + idx_bytes + 256
+     *   sk  = 4 + 4 + 4*64 = 264
      *
-     * h=10: idx_bytes=2, sig=2+64+8384+640=9090,  sk=262
-     * h=16: idx_bytes=2, sig=2+64+8384+1024=9474, sk=262
-     * h=20: idx_bytes=3, sig=3+64+8384+1280=9731, sk=263
+     * h=10: sig=4+64*142=9092
+     * h=16: sig=4+64*148=9476
+     * h=20: sig=4+64*152=9732
      */
 
     /* SHA-2 n=32 */
-    { 0x00000001, "XMSS-SHA2_10_256",  32, 16, 10, 67, 2498, 68, 134, 2 },
-    { 0x00000002, "XMSS-SHA2_16_256",  32, 16, 16, 67, 2690, 68, 134, 2 },
-    { 0x00000003, "XMSS-SHA2_20_256",  32, 16, 20, 67, 2819, 68, 135, 3 },
+    { 0x00000001, "XMSS-SHA2_10_256",  32, 16, 10, 67, 2500, 68, 136, 4 },
+    { 0x00000002, "XMSS-SHA2_16_256",  32, 16, 16, 67, 2692, 68, 136, 4 },
+    { 0x00000003, "XMSS-SHA2_20_256",  32, 16, 20, 67, 2820, 68, 136, 4 },
 
     /* SHA-2 n=64 */
-    { 0x00000004, "XMSS-SHA2_10_512",  64, 16, 10, 131, 9090,  132, 262, 2 },
-    { 0x00000005, "XMSS-SHA2_16_512",  64, 16, 16, 131, 9474,  132, 262, 2 },
-    { 0x00000006, "XMSS-SHA2_20_512",  64, 16, 20, 131, 9731,  132, 263, 3 },
+    { 0x00000004, "XMSS-SHA2_10_512",  64, 16, 10, 131, 9092,  132, 264, 4 },
+    { 0x00000005, "XMSS-SHA2_16_512",  64, 16, 16, 131, 9476,  132, 264, 4 },
+    { 0x00000006, "XMSS-SHA2_20_512",  64, 16, 20, 131, 9732,  132, 264, 4 },
 
     /* SHAKE n=32 */
-    { 0x00000007, "XMSS-SHAKE_10_256", 32, 16, 10, 67, 2498, 68, 134, 2 },
-    { 0x00000008, "XMSS-SHAKE_16_256", 32, 16, 16, 67, 2690, 68, 134, 2 },
-    { 0x00000009, "XMSS-SHAKE_20_256", 32, 16, 20, 67, 2819, 68, 135, 3 },
+    { 0x00000007, "XMSS-SHAKE_10_256", 32, 16, 10, 67, 2500, 68, 136, 4 },
+    { 0x00000008, "XMSS-SHAKE_16_256", 32, 16, 16, 67, 2692, 68, 136, 4 },
+    { 0x00000009, "XMSS-SHAKE_20_256", 32, 16, 20, 67, 2820, 68, 136, 4 },
 
     /* SHAKE n=64 */
-    { 0x0000000A, "XMSS-SHAKE_10_512", 64, 16, 10, 131, 9090,  132, 262, 2 },
-    { 0x0000000B, "XMSS-SHAKE_16_512", 64, 16, 16, 131, 9474,  132, 262, 2 },
-    { 0x0000000C, "XMSS-SHAKE_20_512", 64, 16, 20, 131, 9731,  132, 263, 3 },
+    { 0x0000000A, "XMSS-SHAKE_10_512", 64, 16, 10, 131, 9092,  132, 264, 4 },
+    { 0x0000000B, "XMSS-SHAKE_16_512", 64, 16, 16, 131, 9476,  132, 264, 4 },
+    { 0x0000000C, "XMSS-SHAKE_20_512", 64, 16, 20, 131, 9732,  132, 264, 4 },
 };
 
 #define N_ENTRIES ((int)(sizeof(expected)/sizeof(expected[0])))

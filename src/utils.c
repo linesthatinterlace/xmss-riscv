@@ -1,7 +1,7 @@
 /**
  * utils.c - XMSS utility functions
  *
- * ull_to_bytes, bytes_to_ull: big-endian integer encoding (RFC 8391 §1.3).
+ * ull_to_bytes, bytes_to_ull: big-endian integer encoding (RFC 8391 §2.4).
  * xmss_memzero: secure memory clearing (volatile-pointer idiom).
  * ct_memcmp: constant-time memory comparison (for signature verification).
  */
@@ -14,7 +14,7 @@
 /**
  * ull_to_bytes() - Encode a uint64_t in big-endian into len bytes.
  *
- * RFC 8391 §1.3: toByte(x, n) converts x to an n-byte big-endian string.
+ * RFC 8391 §2.4: toByte(x, n) converts x to an n-byte big-endian string.
  * Writes exactly len bytes; truncates if x is too large for len bytes.
  */
 void ull_to_bytes(uint8_t *out, uint32_t len, uint64_t val)

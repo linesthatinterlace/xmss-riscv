@@ -103,7 +103,7 @@ src/
     sha2_local.*   Stack-based SHA-256 / SHA-512 (no malloc)
     shake_local.*  Stack-based SHAKE-128 / SHAKE-256 (Keccak-f[1600])
   params.c         OID table + parameter derivation
-  address.c        ADRS typed setters (RFC 8391 §2.7)
+  address.c        ADRS typed setters (RFC 8391 §2.5)
   utils.c          ull_to_bytes, bytes_to_ull, xmss_memzero, ct_memcmp
   wots.c           WOTS+ (Algorithms 1–6)
   ltree.c          L-tree (Algorithm 7)

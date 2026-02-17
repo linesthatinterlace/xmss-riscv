@@ -34,7 +34,7 @@ int xmss_F(const xmss_params *p, uint8_t *out,
            const uint8_t *in);
 
 /**
- * xmss_H() - Tree hash function (RFC 8391 §4.1.3)
+ * xmss_H() - Tree hash function (RFC 8391 §4.1.2)
  *
  * H(KEY, M) where M = M_l || M_r (each n bytes).
  *
@@ -50,7 +50,7 @@ int xmss_H(const xmss_params *p, uint8_t *out,
            const uint8_t *in_l, const uint8_t *in_r);
 
 /**
- * xmss_H_msg() - Message hash function (RFC 8391 §4.1.4)
+ * xmss_H_msg() - Message hash function (RFC 8391 §4.1.2)
  *
  * H_msg(KEY, M) where KEY = r || root || toByte(idx, 32).
  * Message M has arbitrary length.
@@ -68,7 +68,7 @@ int xmss_H_msg(const xmss_params *p, uint8_t *out,
                const uint8_t *msg, size_t msglen);
 
 /**
- * xmss_PRF() - Pseudorandom function (RFC 8391 §4.1.5)
+ * xmss_PRF() - Pseudorandom function (RFC 8391 §4.1.2)
  *
  * PRF(KEY, M) = H(toByte(3, pad_len) || KEY || ADRS)
  * where KEY is n bytes (SK_PRF) and ADRS determines the output.
@@ -82,21 +82,23 @@ int xmss_PRF(const xmss_params *p, uint8_t *out,
              const uint8_t *key, const xmss_adrs_t *adrs);
 
 /**
- * xmss_PRF_keygen() - Key generation PRF (RFC 8391 §4.1.5)
+ * xmss_PRF_keygen() - Key generation PRF (RFC 8391 §4.1.11)
  *
- * PRF_keygen(KEY, M) = H(toByte(4, pad_len) || KEY || ADRS)
- * where KEY is SK_SEED.
+ * PRF_keygen(SK_SEED, PUB_SEED, ADRS) =
+ *   H(toByte(4, n) || SK_SEED || PUB_SEED || ADRS)
  *
- * @p:       Parameter set.
- * @out:     Output (n bytes).
- * @sk_seed: n-byte secret seed SK_SEED.
- * @adrs:    Address structure.
+ * @p:        Parameter set.
+ * @out:      Output (n bytes).
+ * @sk_seed:  n-byte secret seed SK_SEED.
+ * @pub_seed: n-byte public seed PUB_SEED.
+ * @adrs:     Address structure.
  */
 int xmss_PRF_keygen(const xmss_params *p, uint8_t *out,
-                    const uint8_t *sk_seed, const xmss_adrs_t *adrs);
+                    const uint8_t *sk_seed, const uint8_t *pub_seed,
+                    const xmss_adrs_t *adrs);
 
 /**
- * xmss_PRF_idx() - PRF with index as 32-byte message (RFC 8391 §4.1.8)
+ * xmss_PRF_idx() - PRF with index as 32-byte message (RFC 8391 §4.1.9)
  *
  * Used in signing to compute r = PRF(SK_PRF, toByte(idx, 32)).
  * This differs from xmss_PRF() in that the 32-byte M is an index encoding,

@@ -1,7 +1,7 @@
 /**
  * params.h - XMSS parameter sets and OID table
  *
- * RFC 8391 §5.2 and Appendix A (all 12 XMSS parameter sets).
+ * RFC 8391 §5.3 and Appendix B (all 12 XMSS parameter sets).
  */
 #ifndef XMSS_PARAMS_H
 #define XMSS_PARAMS_H

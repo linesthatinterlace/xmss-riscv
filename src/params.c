@@ -1,8 +1,8 @@
 /**
  * params.c - XMSS parameter set derivation
  *
- * RFC 8391 §5.2: all 12 XMSS parameter sets.
- * Formulae from RFC 8391 §4.1 and §5.2.
+ * RFC 8391 §5.3: all 12 XMSS parameter sets.
+ * Formulae from RFC 8391 §3.1 and §5.3.
  */
 #include <string.h>
 #include <stddef.h>
@@ -35,7 +35,7 @@ static int derive_params(xmss_params *p)
     else if (p->w == 16)  { p->log2_w = 4; }
     else { return -1; }
 
-    /* RFC 8391 §4.1.2 */
+    /* RFC 8391 §3.1.1 */
     p->len1 = ceil_div(8 * p->n, p->log2_w);
     p->len2 = floor_log2(p->len1 * (p->w - 1)) / p->log2_w + 1;
     p->len  = p->len1 + p->len2;
@@ -48,8 +48,12 @@ static int derive_params(xmss_params *p)
     /* pad_len: n bytes for all standard parameter sets */
     p->pad_len = p->n;
 
-    /* idx_bytes = ceil(h/8) */
-    p->idx_bytes = ceil_div(p->h, 8);
+    /* idx_bytes: 4 for XMSS (d=1), ceil(h/8) for XMSS-MT */
+    if (p->d == 1) {
+        p->idx_bytes = 4;
+    } else {
+        p->idx_bytes = ceil_div(p->h, 8);
+    }
 
     /* idx_max = 2^h - 1 */
     p->idx_max = ((uint64_t)1 << p->h) - 1;
@@ -70,7 +74,7 @@ static int derive_params(xmss_params *p)
     /*
      * sk_bytes = 4 (OID) + idx_bytes + n (SK_SEED) + n (SK_PRF)
      *          + n (root) + n (SEED)
-     * (RFC 8391 §4.1.6, Errata 7900)
+     * (RFC 8391 §4.1.3, Errata 7900)
      */
     p->sk_bytes = 4 + p->idx_bytes + 4 * p->n;
 

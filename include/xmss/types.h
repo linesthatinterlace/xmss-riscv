@@ -1,7 +1,7 @@
 /**
  * types.h - XMSS fundamental types
  *
- * RFC 8391 §2.7: ADRS is a 32-byte array of 8 big-endian 32-bit words.
+ * RFC 8391 §2.5: ADRS is a 32-byte array of 8 big-endian 32-bit words.
  */
 #ifndef XMSS_TYPES_H
 #define XMSS_TYPES_H
@@ -16,7 +16,7 @@ typedef struct {
     uint32_t w[8];
 } xmss_adrs_t;
 
-/* ADRS type constants (RFC 8391 §2.7.3) */
+/* ADRS type constants (RFC 8391 §2.5) */
 #define XMSS_ADRS_TYPE_OTS   0
 #define XMSS_ADRS_TYPE_LTREE 1
 #define XMSS_ADRS_TYPE_HASH  2

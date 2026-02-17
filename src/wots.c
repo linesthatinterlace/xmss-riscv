@@ -1,7 +1,7 @@
 /**
  * wots.c - WOTS+ one-time signature scheme
  *
- * RFC 8391 §4.1.2, Algorithms 1-6.
+ * RFC 8391 §3.1, Algorithms 2-6.
  *
  * J4: No recursion.
  * J3: No malloc; all buffers on stack or caller-provided.
@@ -49,7 +49,7 @@ static void base_w(const xmss_params *p,
 }
 
 /* ====================================================================
- * wots_checksum() - Compute WOTS+ checksum (RFC 8391 §4.1.2)
+ * wots_checksum() - Compute WOTS+ checksum (RFC 8391 §3.1)
  *
  * csum = sum of (w - 1 - msg[i]) for i in 0..len1-1
  * Appended to msg array at positions len1..len1+len2-1 in base-w.
@@ -123,6 +123,7 @@ static void gen_chain(const xmss_params *p,
 static void wots_expand_seed(const xmss_params *p,
                              uint8_t sk[][XMSS_MAX_N],
                              const uint8_t *sk_seed,
+                             const uint8_t *pub_seed,
                              xmss_adrs_t *adrs)
 {
     uint32_t i;
@@ -134,7 +135,7 @@ static void wots_expand_seed(const xmss_params *p,
         xmss_adrs_set_chain(&a, i);
         xmss_adrs_set_hash(&a, 0);
         xmss_adrs_set_key_and_mask(&a, 0);
-        xmss_PRF_keygen(p, sk[i], sk_seed, &a);
+        xmss_PRF_keygen(p, sk[i], sk_seed, pub_seed, &a);
     }
 }
 
@@ -152,13 +153,11 @@ void wots_gen_pk(const xmss_params *p, uint8_t *pk,
 
     /* Step 1: expand SK_SEED */
     a = *adrs;
-    xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
-    wots_expand_seed(p, sk, sk_seed, &a);
+    wots_expand_seed(p, sk, sk_seed, seed, &a);
 
     /* Step 2: for each element, run full chain of w-1 steps */
     for (i = 0; i < p->len; i++) {
         a = *adrs;
-        xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
         xmss_adrs_set_chain(&a, i);
         gen_chain(p,
                   pk + i * p->n, /* output to pk[i] */
@@ -190,13 +189,11 @@ void wots_sign(const xmss_params *p, uint8_t *sig,
 
     /* Expand seed */
     a = *adrs;
-    xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
-    wots_expand_seed(p, sk, sk_seed, &a);
+    wots_expand_seed(p, sk, sk_seed, seed, &a);
 
     /* For each position: chain from 0 to lengths[i] steps */
     for (i = 0; i < p->len; i++) {
         a = *adrs;
-        xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
         xmss_adrs_set_chain(&a, i);
         gen_chain(p,
                   sig + i * p->n,
@@ -226,7 +223,6 @@ void wots_pk_from_sig(const xmss_params *p, uint8_t *pk,
     /* Complete chains from lengths[i] to w-1 */
     for (i = 0; i < p->len; i++) {
         a = *adrs;
-        xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
         xmss_adrs_set_chain(&a, i);
         gen_chain(p,
                   pk + i * p->n,
