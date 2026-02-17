@@ -92,4 +92,68 @@ static inline int test_randombytes(uint8_t *buf, size_t len)
     return 0;
 }
 
+/* ====================================================================
+ * Test buffer helpers — reduce malloc/free boilerplate in roundtrip tests
+ * ==================================================================== */
+
+#include "../include/xmss/xmss.h"
+
+/** Common buffers for XMSS roundtrip tests. */
+typedef struct {
+    xmss_params p;
+    uint8_t *pk;
+    uint8_t *sk;
+    uint8_t *sig;
+    xmss_bds_state *state;
+} xmss_test_ctx;
+
+/** Initialise from an OID.  Returns 0 on success, -1 on failure. */
+static inline int xmss_test_ctx_init(xmss_test_ctx *ctx, uint32_t oid)
+{
+    if (xmss_params_from_oid(&ctx->p, oid) != 0) { return -1; }
+    ctx->pk    = (uint8_t *)malloc(ctx->p.pk_bytes);
+    ctx->sk    = (uint8_t *)malloc(ctx->p.sk_bytes);
+    ctx->sig   = (uint8_t *)malloc(ctx->p.sig_bytes);
+    ctx->state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    if (!ctx->pk || !ctx->sk || !ctx->sig || !ctx->state) {
+        free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
+        return -1;
+    }
+    return 0;
+}
+
+static inline void xmss_test_ctx_free(xmss_test_ctx *ctx)
+{
+    free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
+}
+
+/** Common buffers for XMSS-MT roundtrip tests. */
+typedef struct {
+    xmss_params p;
+    uint8_t *pk;
+    uint8_t *sk;
+    uint8_t *sig;
+    xmssmt_state *state;
+} xmssmt_test_ctx;
+
+/** Initialise from an XMSS-MT OID.  Returns 0 on success, -1 on failure. */
+static inline int xmssmt_test_ctx_init(xmssmt_test_ctx *ctx, uint32_t oid)
+{
+    if (xmssmt_params_from_oid(&ctx->p, oid) != 0) { return -1; }
+    ctx->pk    = (uint8_t *)malloc(ctx->p.pk_bytes);
+    ctx->sk    = (uint8_t *)malloc(ctx->p.sk_bytes);
+    ctx->sig   = (uint8_t *)malloc(ctx->p.sig_bytes);
+    ctx->state = (xmssmt_state *)malloc(sizeof(xmssmt_state));
+    if (!ctx->pk || !ctx->sk || !ctx->sig || !ctx->state) {
+        free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
+        return -1;
+    }
+    return 0;
+}
+
+static inline void xmssmt_test_ctx_free(xmssmt_test_ctx *ctx)
+{
+    free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
+}
+
 #endif /* XMSS_TEST_UTILS_H */

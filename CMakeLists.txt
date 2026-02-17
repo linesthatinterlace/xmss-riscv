@@ -14,6 +14,8 @@ add_compile_options(
     -Wmissing-prototypes
     -Wstrict-prototypes
     -Wshadow
+    -Wconversion
+    -Wsign-conversion
 )
 
 # Debug build: sanitizers

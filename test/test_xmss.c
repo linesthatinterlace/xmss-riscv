@@ -21,27 +21,15 @@
 
 static int test_one_set(uint32_t oid, const char *name)
 {
-    xmss_params p;
-    xmss_bds_state *state;
-    uint8_t *pk, *sk, *sig;
+    xmss_test_ctx t;
     const char *msg = "Hello, XMSS!";
     size_t msglen = strlen(msg);
     int ret;
 
     printf("\n  Testing %s (OID=0x%08x):\n", name, oid);
 
-    if (xmss_params_from_oid(&p, oid) != 0) {
-        printf("  FAIL: cannot get params\n");
-        return 1;
-    }
-
-    pk    = (uint8_t *)malloc(p.pk_bytes);
-    sk    = (uint8_t *)malloc(p.sk_bytes);
-    sig   = (uint8_t *)malloc(p.sig_bytes);
-    state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
-    if (!pk || !sk || !sig || !state) {
-        printf("  FAIL: malloc failed\n");
-        free(pk); free(sk); free(sig); free(state);
+    if (xmss_test_ctx_init(&t, oid) != 0) {
+        printf("  FAIL: init failed\n");
         return 1;
     }
 
@@ -49,7 +37,7 @@ static int test_one_set(uint32_t oid, const char *name)
     test_rng_reset(0x1234567890ABCDEFULL);
 
     /* Keygen */
-    ret = xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
+    ret = xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
     {
         char tname[64];
         snprintf(tname, sizeof(tname), "%s keygen returns XMSS_OK", name);
@@ -58,7 +46,7 @@ static int test_one_set(uint32_t oid, const char *name)
     if (ret != XMSS_OK) { goto done; }
 
     /* Sign */
-    ret = xmss_sign(&p, sig, (const uint8_t *)msg, msglen, sk, state, 0);
+    ret = xmss_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
     {
         char tname[64];
         snprintf(tname, sizeof(tname), "%s sign returns XMSS_OK", name);
@@ -67,7 +55,7 @@ static int test_one_set(uint32_t oid, const char *name)
     if (ret != XMSS_OK) { goto done; }
 
     /* Verify valid signature */
-    ret = xmss_verify(&p, (const uint8_t *)msg, msglen, sig, pk);
+    ret = xmss_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
     {
         char tname[64];
         snprintf(tname, sizeof(tname), "%s verify valid sig returns XMSS_OK", name);
@@ -76,11 +64,11 @@ static int test_one_set(uint32_t oid, const char *name)
 
     /* Verify with bit-flipped signature */
     {
-        uint8_t *bad_sig = (uint8_t *)malloc(p.sig_bytes);
+        uint8_t *bad_sig = (uint8_t *)malloc(t.p.sig_bytes);
         char tname[64];
-        memcpy(bad_sig, sig, p.sig_bytes);
-        bad_sig[p.sig_bytes / 2] ^= 0x01;
-        ret = xmss_verify(&p, (const uint8_t *)msg, msglen, bad_sig, pk);
+        memcpy(bad_sig, t.sig, t.p.sig_bytes);
+        bad_sig[t.p.sig_bytes / 2] ^= 0x01;
+        ret = xmss_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk);
         snprintf(tname, sizeof(tname), "%s verify bit-flipped sig fails", name);
         TEST_INT(tname, ret, XMSS_ERR_VERIFY);
         free(bad_sig);
@@ -90,7 +78,7 @@ static int test_one_set(uint32_t oid, const char *name)
     {
         const char *bad_msg = "Hello, XMSS?";
         char tname[64];
-        ret = xmss_verify(&p, (const uint8_t *)bad_msg, msglen, sig, pk);
+        ret = xmss_verify(&t.p, (const uint8_t *)bad_msg, msglen, t.sig, t.pk);
         snprintf(tname, sizeof(tname), "%s verify wrong message fails", name);
         TEST_INT(tname, ret, XMSS_ERR_VERIFY);
     }
@@ -100,8 +88,8 @@ static int test_one_set(uint32_t oid, const char *name)
         uint64_t idx = 0;
         uint32_t i;
         uint32_t idx_off = 4;
-        for (i = 0; i < p.idx_bytes; i++) {
-            idx = (idx << 8) | sk[idx_off + i];
+        for (i = 0; i < t.p.idx_bytes; i++) {
+            idx = (idx << 8) | t.sk[idx_off + i];
         }
         char tname[64];
         snprintf(tname, sizeof(tname), "%s idx incremented to 1", name);
@@ -109,153 +97,126 @@ static int test_one_set(uint32_t oid, const char *name)
     }
 
 done:
-    free(pk); free(sk); free(sig); free(state);
+    xmss_test_ctx_free(&t);
     return 0;
 }
 
 /* Cross-key rejection: a valid sig must NOT verify under a different PK */
 static void test_cross_key_rejection(uint32_t oid, const char *name)
 {
-    xmss_params p;
-    xmss_bds_state *stateA, *stateB;
-    uint8_t *pkA, *skA, *pkB, *skB, *sig;
+    xmss_test_ctx a, b;
     const char *msg = "cross-key test";
     size_t msglen = strlen(msg);
     int ret;
     char label[128];
 
-    xmss_params_from_oid(&p, oid);
-
-    pkA    = (uint8_t *)malloc(p.pk_bytes);
-    skA    = (uint8_t *)malloc(p.sk_bytes);
-    pkB    = (uint8_t *)malloc(p.pk_bytes);
-    skB    = (uint8_t *)malloc(p.sk_bytes);
-    sig    = (uint8_t *)malloc(p.sig_bytes);
-    stateA = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
-    stateB = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&a, oid);
+    xmss_test_ctx_init(&b, oid);
 
     test_rng_reset(0xABCDEF01ULL);
-    xmss_keygen(&p, pkA, skA, stateA, 0, test_randombytes);
+    xmss_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
     test_rng_reset(0x12345678ULL);
-    xmss_keygen(&p, pkB, skB, stateB, 0, test_randombytes);
+    xmss_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
 
-    xmss_sign(&p, sig, (const uint8_t *)msg, msglen, skA, stateA, 0);
+    xmss_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
 
     /* Sig made with key A must not verify under key B */
-    ret = xmss_verify(&p, (const uint8_t *)msg, msglen, sig, pkB);
+    ret = xmss_verify(&a.p, (const uint8_t *)msg, msglen, a.sig, b.pk);
     snprintf(label, sizeof(label), "%s cross-key rejection", name);
     TEST_INT(label, ret, XMSS_ERR_VERIFY);
 
-    free(pkA); free(skA); free(pkB); free(skB); free(sig);
-    free(stateA); free(stateB);
+    xmss_test_ctx_free(&a);
+    xmss_test_ctx_free(&b);
 }
 
 /* Targeted bit-flips in idx, r, and auth regions of the signature */
 static void test_targeted_bitflips(uint32_t oid, const char *name)
 {
-    xmss_params p;
-    xmss_bds_state *state;
-    uint8_t *pk, *sk, *sig, *bad_sig;
+    xmss_test_ctx t;
+    uint8_t *bad_sig;
     const char *msg = "bitflip test";
     size_t msglen = strlen(msg);
     char label[128];
 
-    xmss_params_from_oid(&p, oid);
+    xmss_test_ctx_init(&t, oid);
 
-    pk      = (uint8_t *)malloc(p.pk_bytes);
-    sk      = (uint8_t *)malloc(p.sk_bytes);
-    sig     = (uint8_t *)malloc(p.sig_bytes);
-    bad_sig = (uint8_t *)malloc(p.sig_bytes);
-    state   = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    bad_sig = (uint8_t *)malloc(t.p.sig_bytes);
 
     test_rng_reset(0xFEDCBA9876543210ULL);
-    xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
-    xmss_sign(&p, sig, (const uint8_t *)msg, msglen, sk, state, 0);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    xmss_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
 
     /* Flip a bit in the idx field (first byte of sig) */
-    memcpy(bad_sig, sig, p.sig_bytes);
+    memcpy(bad_sig, t.sig, t.p.sig_bytes);
     bad_sig[0] ^= 0x01;
     snprintf(label, sizeof(label), "%s bit-flip in idx region fails", name);
-    TEST_INT(label, xmss_verify(&p, (const uint8_t *)msg, msglen, bad_sig, pk),
+    TEST_INT(label, xmss_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk),
              XMSS_ERR_VERIFY);
 
     /* Flip a bit in the r field (byte idx_bytes into sig) */
-    memcpy(bad_sig, sig, p.sig_bytes);
-    bad_sig[p.idx_bytes] ^= 0x80;
+    memcpy(bad_sig, t.sig, t.p.sig_bytes);
+    bad_sig[t.p.idx_bytes] ^= 0x80;
     snprintf(label, sizeof(label), "%s bit-flip in r region fails", name);
-    TEST_INT(label, xmss_verify(&p, (const uint8_t *)msg, msglen, bad_sig, pk),
+    TEST_INT(label, xmss_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk),
              XMSS_ERR_VERIFY);
 
     /* Flip a bit in the auth path (last n bytes of sig) */
-    memcpy(bad_sig, sig, p.sig_bytes);
-    bad_sig[p.sig_bytes - 1] ^= 0x01;
+    memcpy(bad_sig, t.sig, t.p.sig_bytes);
+    bad_sig[t.p.sig_bytes - 1] ^= 0x01;
     snprintf(label, sizeof(label), "%s bit-flip in auth region fails", name);
-    TEST_INT(label, xmss_verify(&p, (const uint8_t *)msg, msglen, bad_sig, pk),
+    TEST_INT(label, xmss_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk),
              XMSS_ERR_VERIFY);
 
-    free(pk); free(sk); free(sig); free(bad_sig); free(state);
+    free(bad_sig);
+    xmss_test_ctx_free(&t);
 }
 
 /* Message boundary tests: empty message and block-boundary-length message */
 static void test_message_boundaries(uint32_t oid, const char *name)
 {
-    xmss_params p;
-    xmss_bds_state *state;
-    uint8_t *pk, *sk, *sig;
+    xmss_test_ctx t;
     /* 64 bytes = one SHA-256 block, also a SHAKE rate multiple edge */
     uint8_t msg64[64];
     char label[128];
     int ret;
     size_t i;
 
-    xmss_params_from_oid(&p, oid);
-
-    pk    = (uint8_t *)malloc(p.pk_bytes);
-    sk    = (uint8_t *)malloc(p.sk_bytes);
-    sig   = (uint8_t *)malloc(p.sig_bytes);
-    state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&t, oid);
 
     test_rng_reset(0x0102030405060708ULL);
-    xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
 
     /* Empty message */
-    ret = xmss_sign(&p, sig, (const uint8_t *)"", 0, sk, state, 0);
+    ret = xmss_sign(&t.p, t.sig, (const uint8_t *)"", 0, t.sk, t.state, 0);
     snprintf(label, sizeof(label), "%s sign empty msg", name);
     TEST_INT(label, ret, XMSS_OK);
-    ret = xmss_verify(&p, (const uint8_t *)"", 0, sig, pk);
+    ret = xmss_verify(&t.p, (const uint8_t *)"", 0, t.sig, t.pk);
     snprintf(label, sizeof(label), "%s verify empty msg", name);
     TEST_INT(label, ret, XMSS_OK);
 
     /* 64-byte message (SHA-256 block boundary) */
     for (i = 0; i < sizeof(msg64); i++) { msg64[i] = (uint8_t)(i + 1); }
-    ret = xmss_sign(&p, sig, msg64, sizeof(msg64), sk, state, 0);
+    ret = xmss_sign(&t.p, t.sig, msg64, sizeof(msg64), t.sk, t.state, 0);
     snprintf(label, sizeof(label), "%s sign 64-byte msg", name);
     TEST_INT(label, ret, XMSS_OK);
-    ret = xmss_verify(&p, msg64, sizeof(msg64), sig, pk);
+    ret = xmss_verify(&t.p, msg64, sizeof(msg64), t.sig, t.pk);
     snprintf(label, sizeof(label), "%s verify 64-byte msg", name);
     TEST_INT(label, ret, XMSS_OK);
 
-    free(pk); free(sk); free(sig); free(state);
+    xmss_test_ctx_free(&t);
 }
 
 /* Sequential signing: exercises bds_round across multiple tau values */
 static void test_sequential(uint32_t oid, const char *name)
 {
-    xmss_params p;
-    xmss_bds_state *state;
-    uint8_t *pk, *sk, *sig;
+    xmss_test_ctx t;
     char label[128];
     int i, rc;
 
-    xmss_params_from_oid(&p, oid);
-
-    pk    = (uint8_t *)malloc(p.pk_bytes);
-    sk    = (uint8_t *)malloc(p.sk_bytes);
-    sig   = (uint8_t *)malloc(p.sig_bytes);
-    state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&t, oid);
 
     test_rng_reset(99);
-    xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
 
     for (i = 0; i < 20; i++) {
         uint8_t msg[4];
@@ -264,19 +225,19 @@ static void test_sequential(uint32_t oid, const char *name)
         msg[2] = (uint8_t)(i * 3);
         msg[3] = (uint8_t)(i ^ 0x55);
 
-        rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
+        rc = xmss_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, 0);
         if (rc != XMSS_OK) {
             snprintf(label, sizeof(label), "%s: seq sign idx=%d", name, i);
             TEST(label, 0);
             break;
         }
 
-        rc = xmss_verify(&p, msg, sizeof(msg), sig, pk);
+        rc = xmss_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
         snprintf(label, sizeof(label), "%s: seq verify idx=%d", name, i);
         TEST(label, rc == XMSS_OK);
     }
 
-    free(pk); free(sk); free(sig); free(state);
+    xmss_test_ctx_free(&t);
 }
 
 int main(void)

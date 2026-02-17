@@ -37,3 +37,18 @@ set_tests_properties(
     test_xmss test_kat test_bds test_bds_serial test_xmssmt
     PROPERTIES LABELS "slow"
 )
+
+# Timeouts: generous limits to catch hangs without breaking slow runs.
+# Fast tests should finish in well under 30 s; slow tests under 5 min.
+set_tests_properties(
+    test_params test_address test_hash test_wots test_xmssmt_params test_utils_internal
+    PROPERTIES TIMEOUT 30
+)
+set_tests_properties(
+    test_xmss test_bds test_bds_serial
+    PROPERTIES TIMEOUT 120
+)
+set_tests_properties(
+    test_kat test_xmssmt
+    PROPERTIES TIMEOUT 300
+)
