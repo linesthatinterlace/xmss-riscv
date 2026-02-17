@@ -29,7 +29,7 @@ qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_xmss
 
 ### Hash abstraction boundary
 
-`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `bds.c`, `xmss.c`, `xmssmt.c`) calls only:
+`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `bds.c`, `xmss.c`, `xmss_mt.c`) calls only:
 
 ```c
 xmss_F(), xmss_H(), xmss_H_msg(), xmss_PRF(), xmss_PRF_keygen(), xmss_PRF_idx()
@@ -40,7 +40,7 @@ declared in `src/hash/hash_iface.h`. Do not add hash backend includes to any oth
 ### No malloc
 
 The entire library is allocation-free. All buffers are either stack-local or caller-provided. The largest allocations are:
-- `xmssmt_state`: ~780 KB (caller-managed; holds 2×MAX_D-1 BDS states + WOTS sig cache)
+- `xmss_mt_state`: ~780 KB (caller-managed; holds 2×MAX_D-1 BDS states + WOTS sig cache)
 - `xmss_bds_state`: ~34 KB (caller-managed; see `include/xmss/xmss.h`)
 - `wots_buf_t`: `XMSS_MAX_WOTS_LEN * XMSS_MAX_N` = 131 × 64 = 8384 bytes (in `wots.c`)
 - `treehash_stack_t`: `(XMSS_MAX_H+1) * XMSS_MAX_N` = 21 × 64 = 1344 bytes (in `treehash.c`)
@@ -74,7 +74,7 @@ XMSS-MT Sig: idx(idx_bytes) | r(n) | d × [sig_WOTS(len*n) | auth(tree_height*n)
 ```
 
 SK/PK layout is the same for XMSS and XMSS-MT (only idx_bytes differs).
-Offset helpers are shared `static inline` functions in `src/sk_offsets.h`, included by both `xmss.c` and `xmssmt.c`.
+Offset helpers are shared `static inline` functions in `src/sk_offsets.h`, included by both `xmss.c` and `xmss_mt.c`.
 
 ### SHA-2 domain separation (RFC 8391 §5.1)
 
@@ -114,15 +114,15 @@ These are enforced and must not be broken by any change:
 | `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets (advances BDS to idx=512 for sig fingerprint) |
 | `test_bds` | BDS-specific: bds_k validation (odd/too-large rejected); roundtrip and sequential signing with bds_k=2 and bds_k=4 |
 | `test_bds_serial` | BDS serialization: round-trip after keygen, mid-signing, byte-exact, size consistency, multiple param sets, bds_k=2 |
-| `test_xmssmt_params` | All 32 XMSS-MT OIDs: n, w, h, d, tree_height, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes; RFC and internal OID lookup |
-| `test_xmssmt` | XMSS-MT keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; sequential signing (5 sigs); tree boundary crossing (1024+ sigs) |
+| `test_xmss_mt_params` | All 32 XMSS-MT OIDs: n, w, h, d, tree_height, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes; RFC and internal OID lookup |
+| `test_xmss_mt` | XMSS-MT keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; sequential signing (5 sigs); tree boundary crossing (1024+ sigs) |
 | `test_utils_internal` | ct_memcmp, ull_to_bytes, bytes_to_ull, xmss_memzero, xmss_PRF_idx, key exhaustion |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
 ## Future work
 
-- **Remaining-signatures query**: `xmss_sign`/`xmssmt_sign` return `XMSS_ERR_EXHAUSTED` when the index is spent, but there is no function to query how many signatures remain.
+- **Remaining-signatures query**: `xmss_sign`/`xmss_mt_sign` return `XMSS_ERR_EXHAUSTED` when the index is spent, but there is no function to query how many signatures remain.
 - **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT parameter sets (the reference embeds BDS state in the SK buffer, so byte-level comparison requires a translation layer).
 
 ## Dependencies

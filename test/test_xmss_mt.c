@@ -1,5 +1,5 @@
 /**
- * test_xmssmt.c - Integration tests for XMSS-MT keygen/sign/verify
+ * test_xmss_mt.c - Integration tests for XMSS-MT keygen/sign/verify
  *
  * Uses BDS-accelerated hypertree operations.
  *
@@ -20,18 +20,18 @@
 #include "../include/xmss/params.h"
 
 /* Smallest practical XMSS-MT: h=20, d=2, tree_height=10 */
-#define TEST_OID OID_XMSSMT_SHA2_20_2_256
+#define TEST_OID OID_XMSS_MT_SHA2_20_2_256
 
 static void test_roundtrip(void)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     const char *msg = "Hello, XMSS-MT!";
     size_t msglen = strlen(msg);
     int ret;
 
     printf("\n--- roundtrip ---\n");
 
-    if (xmssmt_test_ctx_init(&t, TEST_OID) != 0) {
+    if (xmss_mt_test_ctx_init(&t, TEST_OID) != 0) {
         printf("  FAIL: init\n");
         return;
     }
@@ -44,17 +44,17 @@ static void test_roundtrip(void)
     test_rng_reset(0xDEADBEEF42ULL);
 
     /* Keygen */
-    ret = xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    ret = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
     TEST_INT("keygen", ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
     /* Sign */
-    ret = xmssmt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
+    ret = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
     TEST_INT("sign", ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
     /* Verify valid signature */
-    ret = xmssmt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
+    ret = xmss_mt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
     TEST_INT("verify valid sig", ret, XMSS_OK);
 
     /* Bit-flip rejection */
@@ -62,7 +62,7 @@ static void test_roundtrip(void)
         uint8_t *bad_sig = (uint8_t *)malloc(t.p.sig_bytes);
         memcpy(bad_sig, t.sig, t.p.sig_bytes);
         bad_sig[t.p.sig_bytes / 2] ^= 0x01;
-        ret = xmssmt_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk);
+        ret = xmss_mt_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk);
         TEST_INT("verify bit-flipped sig fails", ret, XMSS_ERR_VERIFY);
         free(bad_sig);
     }
@@ -70,7 +70,7 @@ static void test_roundtrip(void)
     /* Wrong message rejection */
     {
         const char *bad_msg = "Hello, XMSS-MT?";
-        ret = xmssmt_verify(&t.p, (const uint8_t *)bad_msg, msglen, t.sig, t.pk);
+        ret = xmss_mt_verify(&t.p, (const uint8_t *)bad_msg, msglen, t.sig, t.pk);
         TEST_INT("verify wrong message fails", ret, XMSS_ERR_VERIFY);
     }
 
@@ -85,22 +85,22 @@ static void test_roundtrip(void)
     }
 
 done:
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 static void test_sequential(void)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     char label[128];
     int i, rc;
     int nsigs = 5;
 
     printf("\n--- sequential signing (%d sigs) ---\n", nsigs);
 
-    xmssmt_test_ctx_init(&t, TEST_OID);
+    xmss_mt_test_ctx_init(&t, TEST_OID);
 
     test_rng_reset(0x1111222233334444ULL);
-    xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
 
     for (i = 0; i < nsigs; i++) {
         uint8_t msg[4];
@@ -109,38 +109,38 @@ static void test_sequential(void)
         msg[2] = (uint8_t)(i * 3);
         msg[3] = (uint8_t)(i ^ 0x55);
 
-        rc = xmssmt_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, 0);
+        rc = xmss_mt_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, 0);
         if (rc != XMSS_OK) {
             snprintf(label, sizeof(label), "sign idx=%d", i);
             TEST(label, 0);
             break;
         }
 
-        rc = xmssmt_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
+        rc = xmss_mt_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
         snprintf(label, sizeof(label), "verify idx=%d", i);
         TEST(label, rc == XMSS_OK);
     }
 
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 static void test_tree_boundary(void)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     int i, rc;
     char label[128];
     uint32_t boundary;
 
     printf("\n--- tree boundary crossing ---\n");
 
-    xmssmt_test_ctx_init(&t, TEST_OID);
+    xmss_mt_test_ctx_init(&t, TEST_OID);
 
     /* tree_height=10, so layer-0 tree boundary is at idx=1024 */
     boundary = (uint32_t)1 << t.p.tree_height;
     printf("  tree_height=%u, boundary at idx=%u\n", t.p.tree_height, boundary);
 
     test_rng_reset(0xAAAABBBBCCCCDDDDULL);
-    xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
 
     /* Sign up to the boundary and a few past it */
     for (i = 0; i < (int)(boundary + 3); i++) {
@@ -150,7 +150,7 @@ static void test_tree_boundary(void)
         msg[2] = (uint8_t)(i >> 16);
         msg[3] = (uint8_t)(i >> 24);
 
-        rc = xmssmt_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, 0);
+        rc = xmss_mt_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, 0);
         if (rc != XMSS_OK) {
             snprintf(label, sizeof(label), "sign idx=%d FAILED", i);
             TEST(label, 0);
@@ -161,7 +161,7 @@ static void test_tree_boundary(void)
          * first-after-boundary, and a few more after */
         if (i == 0 || i == (int)(boundary - 1) || i == (int)boundary ||
             i == (int)(boundary + 1) || i == (int)(boundary + 2)) {
-            rc = xmssmt_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
+            rc = xmss_mt_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
             snprintf(label, sizeof(label), "verify idx=%d", i);
             TEST(label, rc == XMSS_OK);
         }
@@ -173,13 +173,13 @@ static void test_tree_boundary(void)
 
     printf("  signed %u signatures total\n", boundary + 3);
 
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 /* Test a second parameter set: keygen + sign + verify */
 static void test_param_set(uint32_t oid, const char *name)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     const char *msg = "param set test";
     size_t msglen = strlen(msg);
     int ret;
@@ -187,62 +187,62 @@ static void test_param_set(uint32_t oid, const char *name)
 
     printf("\n  [%s]\n", name);
 
-    if (xmssmt_test_ctx_init(&t, oid) != 0) {
+    if (xmss_mt_test_ctx_init(&t, oid) != 0) {
         printf("  SKIP: unrecognised OID 0x%08x\n", oid);
         return;
     }
 
     test_rng_reset(0xCAFEBABEDEADBEEFULL);
-    ret = xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    ret = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
     snprintf(label, sizeof(label), "%s keygen", name);
     TEST_INT(label, ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
-    ret = xmssmt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
+    ret = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
     snprintf(label, sizeof(label), "%s sign", name);
     TEST_INT(label, ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
-    ret = xmssmt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
+    ret = xmss_mt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
     snprintf(label, sizeof(label), "%s verify", name);
     TEST_INT(label, ret, XMSS_OK);
 
 done:
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 /* bds_k=2 roundtrip */
 static void test_bds_k2(void)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     const char *msg = "bds_k=2 test";
     size_t msglen = strlen(msg);
     int ret;
 
     printf("\n--- bds_k=2 roundtrip ---\n");
 
-    xmssmt_test_ctx_init(&t, TEST_OID);
+    xmss_mt_test_ctx_init(&t, TEST_OID);
 
     test_rng_reset(0x8899AABBCCDDEEFFULL);
-    ret = xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 2, test_randombytes);
+    ret = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 2, test_randombytes);
     TEST_INT("bds_k=2 keygen", ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
-    ret = xmssmt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 2);
+    ret = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 2);
     TEST_INT("bds_k=2 sign", ret, XMSS_OK);
     if (ret != XMSS_OK) { goto done; }
 
-    ret = xmssmt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
+    ret = xmss_mt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, t.pk);
     TEST_INT("bds_k=2 verify", ret, XMSS_OK);
 
 done:
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 /* Message boundary tests: empty message and block-boundary-length message */
 static void test_message_boundaries(void)
 {
-    xmssmt_test_ctx t;
+    xmss_mt_test_ctx t;
     uint8_t msg64[64];
     char label[128];
     int ret;
@@ -250,68 +250,68 @@ static void test_message_boundaries(void)
 
     printf("\n--- message boundary tests ---\n");
 
-    xmssmt_test_ctx_init(&t, TEST_OID);
+    xmss_mt_test_ctx_init(&t, TEST_OID);
 
     test_rng_reset(0x0102030405060708ULL);
-    xmssmt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
 
     /* Empty message */
-    ret = xmssmt_sign(&t.p, t.sig, (const uint8_t *)"", 0, t.sk, t.state, 0);
-    snprintf(label, sizeof(label), "XMSSMT sign empty msg");
+    ret = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)"", 0, t.sk, t.state, 0);
+    snprintf(label, sizeof(label), "XMSS-MT sign empty msg");
     TEST_INT(label, ret, XMSS_OK);
-    ret = xmssmt_verify(&t.p, (const uint8_t *)"", 0, t.sig, t.pk);
-    snprintf(label, sizeof(label), "XMSSMT verify empty msg");
+    ret = xmss_mt_verify(&t.p, (const uint8_t *)"", 0, t.sig, t.pk);
+    snprintf(label, sizeof(label), "XMSS-MT verify empty msg");
     TEST_INT(label, ret, XMSS_OK);
 
     /* 64-byte message (SHA-256 block boundary) */
     for (i = 0; i < sizeof(msg64); i++) { msg64[i] = (uint8_t)(i + 1); }
-    ret = xmssmt_sign(&t.p, t.sig, msg64, sizeof(msg64), t.sk, t.state, 0);
-    snprintf(label, sizeof(label), "XMSSMT sign 64-byte msg");
+    ret = xmss_mt_sign(&t.p, t.sig, msg64, sizeof(msg64), t.sk, t.state, 0);
+    snprintf(label, sizeof(label), "XMSS-MT sign 64-byte msg");
     TEST_INT(label, ret, XMSS_OK);
-    ret = xmssmt_verify(&t.p, msg64, sizeof(msg64), t.sig, t.pk);
-    snprintf(label, sizeof(label), "XMSSMT verify 64-byte msg");
+    ret = xmss_mt_verify(&t.p, msg64, sizeof(msg64), t.sig, t.pk);
+    snprintf(label, sizeof(label), "XMSS-MT verify 64-byte msg");
     TEST_INT(label, ret, XMSS_OK);
 
-    xmssmt_test_ctx_free(&t);
+    xmss_mt_test_ctx_free(&t);
 }
 
 /* Cross-key rejection: signature under key A must not verify under key B */
 static void test_cross_key(void)
 {
-    xmssmt_test_ctx a, b;
-    const char *msg = "cross-key xmssmt";
+    xmss_mt_test_ctx a, b;
+    const char *msg = "cross-key xmss-mt";
     size_t msglen = strlen(msg);
     int ret;
 
     printf("\n--- cross-key rejection ---\n");
 
-    xmssmt_test_ctx_init(&a, TEST_OID);
-    xmssmt_test_ctx_init(&b, TEST_OID);
+    xmss_mt_test_ctx_init(&a, TEST_OID);
+    xmss_mt_test_ctx_init(&b, TEST_OID);
 
     test_rng_reset(0x1122334455667788ULL);
-    xmssmt_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
+    xmss_mt_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
     test_rng_reset(0x8877665544332211ULL);
-    xmssmt_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
+    xmss_mt_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
 
-    xmssmt_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
-    ret = xmssmt_verify(&a.p, (const uint8_t *)msg, msglen, a.sig, b.pk);
+    xmss_mt_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
+    ret = xmss_mt_verify(&a.p, (const uint8_t *)msg, msglen, a.sig, b.pk);
     TEST_INT("cross-key rejection", ret, XMSS_ERR_VERIFY);
 
-    xmssmt_test_ctx_free(&a);
-    xmssmt_test_ctx_free(&b);
+    xmss_mt_test_ctx_free(&a);
+    xmss_mt_test_ctx_free(&b);
 }
 
 int main(void)
 {
-    printf("=== test_xmssmt ===\n");
+    printf("=== test_xmss_mt ===\n");
 
     test_roundtrip();
     test_sequential();
     test_tree_boundary();
 
     printf("\n--- additional parameter sets ---\n");
-    test_param_set(OID_XMSSMT_SHAKE_20_2_256, "XMSSMT-SHAKE_20/2_256");
-    test_param_set(OID_XMSSMT_SHA2_20_4_256,  "XMSSMT-SHA2_20/4_256");
+    test_param_set(OID_XMSS_MT_SHAKE_20_2_256, "XMSSMT-SHAKE_20/2_256");
+    test_param_set(OID_XMSS_MT_SHA2_20_4_256,  "XMSSMT-SHA2_20/4_256");
 
     test_message_boundaries();
     test_bds_k2();

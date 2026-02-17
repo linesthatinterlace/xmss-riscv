@@ -6,7 +6,7 @@
  *   2. ull_to_bytes / bytes_to_ull: round-trip, big-endian layout, limits
  *   3. xmss_memzero: buffer actually cleared after call
  *   4. xmss_PRF_idx: determinism and domain separation
- *   5. Key exhaustion: xmss_sign and xmssmt_sign return XMSS_ERR_EXHAUSTED
+ *   5. Key exhaustion: xmss_sign and xmss_mt_sign return XMSS_ERR_EXHAUSTED
  */
 #include <stdio.h>
 #include <stdint.h>
@@ -215,10 +215,10 @@ static void test_exhaustion_xmss(void)
 /* ------------------------------------------------------------------ */
 /* Key exhaustion — XMSS-MT                                           */
 /* ------------------------------------------------------------------ */
-static void test_exhaustion_xmssmt(void)
+static void test_exhaustion_xmss_mt(void)
 {
     xmss_params p;
-    xmssmt_state *state;
+    xmss_mt_state *state;
     uint8_t *pk, *sk, *sig;
     uint8_t msg[] = { 0x03, 0x04 };
     int ret;
@@ -227,26 +227,26 @@ static void test_exhaustion_xmssmt(void)
 
     /* XMSSMT-SHA2_20/2_256: h=20, idx_max = 2^20 - 1.
      * Inject idx = idx_max to skip signing 2^20 - 1 times. */
-    xmssmt_params_from_oid(&p, OID_XMSSMT_SHA2_20_2_256);
+    xmss_mt_params_from_oid(&p, OID_XMSS_MT_SHA2_20_2_256);
 
     pk    = (uint8_t *)malloc(p.pk_bytes);
     sk    = (uint8_t *)malloc(p.sk_bytes);
     sig   = (uint8_t *)malloc(p.sig_bytes);
-    state = (xmssmt_state *)malloc(sizeof(xmssmt_state));
+    state = (xmss_mt_state *)malloc(sizeof(xmss_mt_state));
 
     test_rng_reset(0xDDEEFF0011223344ULL);
-    xmssmt_keygen(&p, pk, sk, state, 0, test_randombytes);
+    xmss_mt_keygen(&p, pk, sk, state, 0, test_randombytes);
 
     /* Inject idx = idx_max into SK */
     ull_to_bytes(sk + 4, p.idx_bytes, p.idx_max);
 
     /* Sign at idx_max must succeed */
-    ret = xmssmt_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
-    TEST_INT("XMSSMT sign at idx_max succeeds", ret, XMSS_OK);
+    ret = xmss_mt_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
+    TEST_INT("XMSS-MT sign at idx_max succeeds", ret, XMSS_OK);
 
     /* Next sign must return EXHAUSTED */
-    ret = xmssmt_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
-    TEST_INT("XMSSMT sign after idx_max → EXHAUSTED", ret, XMSS_ERR_EXHAUSTED);
+    ret = xmss_mt_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
+    TEST_INT("XMSS-MT sign after idx_max → EXHAUSTED", ret, XMSS_ERR_EXHAUSTED);
 
     free(pk); free(sk); free(sig); free(state);
 }
@@ -263,7 +263,7 @@ int main(void)
     test_memzero();
     test_prf_idx();
     test_exhaustion_xmss();
-    test_exhaustion_xmssmt();
+    test_exhaustion_xmss_mt();
 
     return tests_done();
 }

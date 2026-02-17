@@ -1,7 +1,7 @@
 /**
  * sk_offsets.h - SK / PK field offset helpers (internal header)
  *
- * Shared between xmss.c and xmssmt.c.  The SK/PK byte layout is identical
+ * Shared between xmss.c and xmss_mt.c.  The SK/PK byte layout is identical
  * for both XMSS and XMSS-MT (only idx_bytes differs):
  *
  *   SK: OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)

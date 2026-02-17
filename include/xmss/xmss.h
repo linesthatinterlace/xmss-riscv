@@ -200,18 +200,18 @@ int xmss_bds_deserialize(const xmss_params *p, xmss_bds_state *state,
  * hypertree.  Each layer has tree height h/d.  Total signing capacity
  * is 2^h messages.
  *
- * The xmssmt_state holds 2*d-1 BDS states (d current + d-1 next)
+ * The xmss_mt_state holds 2*d-1 BDS states (d current + d-1 next)
  * plus d-1 cached WOTS signatures for cross-layer signing.
  * ==================================================================== */
 
 /**
- * xmssmt_state - XMSS-MT traversal state.
+ * xmss_mt_state - XMSS-MT traversal state.
  *
  * Manages BDS states for all d layers plus cached WOTS signatures.
  * Statically sized using XMSS_MAX_D (Jasmin J1/J3).
- * Allocated by the caller; must be initialised by xmssmt_keygen().
+ * Allocated by the caller; must be initialised by xmss_mt_keygen().
  */
-typedef struct xmssmt_state {
+typedef struct xmss_mt_state {
     /* 2*d-1 BDS states:
      * bds[0..d-1]    = current tree state for each layer
      * bds[d..2*d-2]  = "next" tree state for layers 0..d-2 */
@@ -221,10 +221,10 @@ typedef struct xmssmt_state {
      * wots_sigs[i] = signature of layer i's root by layer i+1.
      * d-1 cached signatures. */
     uint8_t wots_sigs[XMSS_MAX_D - 1][XMSS_MAX_WOTS_LEN * XMSS_MAX_N];
-} xmssmt_state;
+} xmss_mt_state;
 
 /**
- * xmssmt_keygen() - Generate an XMSS-MT key pair with hypertree state.
+ * xmss_mt_keygen() - Generate an XMSS-MT key pair with hypertree state.
  *
  * @p:           Parameter set (must have d > 1).
  * @pk:          Output public key (p->pk_bytes bytes).
@@ -235,12 +235,12 @@ typedef struct xmssmt_state {
  *
  * Returns XMSS_OK on success.
  */
-int xmssmt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
-                  xmssmt_state *state, uint32_t bds_k,
+int xmss_mt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                  xmss_mt_state *state, uint32_t bds_k,
                   xmss_randombytes_fn randombytes);
 
 /**
- * xmssmt_sign() - Sign a message using XMSS-MT hypertree.
+ * xmss_mt_sign() - Sign a message using XMSS-MT hypertree.
  *
  * @p:      Parameter set (must have d > 1).
  * @sig:    Output signature (p->sig_bytes bytes).
@@ -252,12 +252,12 @@ int xmssmt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
  *
  * Returns XMSS_OK on success, XMSS_ERR_EXHAUSTED if index exhausted.
  */
-int xmssmt_sign(const xmss_params *p, uint8_t *sig,
+int xmss_mt_sign(const xmss_params *p, uint8_t *sig,
                 const uint8_t *msg, size_t msglen,
-                uint8_t *sk, xmssmt_state *state, uint32_t bds_k);
+                uint8_t *sk, xmss_mt_state *state, uint32_t bds_k);
 
 /**
- * xmssmt_verify() - Verify an XMSS-MT signature.
+ * xmss_mt_verify() - Verify an XMSS-MT signature.
  *
  * @p:      Parameter set (must have d > 1).
  * @msg:    Message that was signed.
@@ -268,7 +268,7 @@ int xmssmt_sign(const xmss_params *p, uint8_t *sig,
  * Returns XMSS_OK if valid, XMSS_ERR_VERIFY if invalid.
  * Stateless — no BDS state needed.
  */
-int xmssmt_verify(const xmss_params *p,
+int xmss_mt_verify(const xmss_params *p,
                   const uint8_t *msg, size_t msglen,
                   const uint8_t *sig, const uint8_t *pk);
 

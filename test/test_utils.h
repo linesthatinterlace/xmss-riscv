@@ -133,17 +133,17 @@ typedef struct {
     uint8_t *pk;
     uint8_t *sk;
     uint8_t *sig;
-    xmssmt_state *state;
-} xmssmt_test_ctx;
+    xmss_mt_state *state;
+} xmss_mt_test_ctx;
 
 /** Initialise from an XMSS-MT OID.  Returns 0 on success, -1 on failure. */
-static inline int xmssmt_test_ctx_init(xmssmt_test_ctx *ctx, uint32_t oid)
+static inline int xmss_mt_test_ctx_init(xmss_mt_test_ctx *ctx, uint32_t oid)
 {
-    if (xmssmt_params_from_oid(&ctx->p, oid) != 0) { return -1; }
+    if (xmss_mt_params_from_oid(&ctx->p, oid) != 0) { return -1; }
     ctx->pk    = (uint8_t *)malloc(ctx->p.pk_bytes);
     ctx->sk    = (uint8_t *)malloc(ctx->p.sk_bytes);
     ctx->sig   = (uint8_t *)malloc(ctx->p.sig_bytes);
-    ctx->state = (xmssmt_state *)malloc(sizeof(xmssmt_state));
+    ctx->state = (xmss_mt_state *)malloc(sizeof(xmss_mt_state));
     if (!ctx->pk || !ctx->sk || !ctx->sig || !ctx->state) {
         free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
         return -1;
@@ -151,7 +151,7 @@ static inline int xmssmt_test_ctx_init(xmssmt_test_ctx *ctx, uint32_t oid)
     return 0;
 }
 
-static inline void xmssmt_test_ctx_free(xmssmt_test_ctx *ctx)
+static inline void xmss_mt_test_ctx_free(xmss_mt_test_ctx *ctx)
 {
     free(ctx->pk); free(ctx->sk); free(ctx->sig); free(ctx->state);
 }

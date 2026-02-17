@@ -42,7 +42,7 @@ add_library(xmss STATIC
     src/bds.c
     src/bds_serialize.c
     src/xmss.c
-    src/xmssmt.c
+    src/xmss_mt.c
 )
 
 target_include_directories(xmss PUBLIC

@@ -102,15 +102,15 @@ int ok = xmss_verify(&p, msg, msglen, sig, pk);
 
 ```c
 xmss_params p;
-xmssmt_params_from_oid(&p, OID_XMSSMT_SHA2_20_2_256);
+xmss_mt_params_from_oid(&p, OID_XMSS_MT_SHA2_20_2_256);
 
 uint8_t pk[68], sk[135];
 uint8_t sig[4963];
-xmssmt_state *state = malloc(sizeof(xmssmt_state)); // ~780 KB
+xmss_mt_state *state = malloc(sizeof(xmss_mt_state)); // ~780 KB
 
-xmssmt_keygen(&p, pk, sk, state, 0, my_randombytes);
-xmssmt_sign(&p, sig, msg, msglen, sk, state, 0);
-int ok = xmssmt_verify(&p, msg, msglen, sig, pk);
+xmss_mt_keygen(&p, pk, sk, state, 0, my_randombytes);
+xmss_mt_sign(&p, sig, msg, msglen, sk, state, 0);
+int ok = xmss_mt_verify(&p, msg, msglen, sig, pk);
 ```
 
 **Important**: XMSS is stateful. The leaf index in `sk` is incremented on every call to sign. You must persist the updated `sk` (and BDS/MT state) to durable storage before using the signature; reusing an index breaks security.
@@ -134,7 +134,7 @@ src/
   bds.c            BDS tree traversal (amortised auth path computation)
   bds_serialize.c  BDS state serialization/deserialization
   xmss.c           XMSS keygen / sign / verify (Algorithms 10-14)
-  xmssmt.c         XMSS-MT keygen / sign / verify (Algorithms 15-17)
+  xmss_mt.c         XMSS-MT keygen / sign / verify (Algorithms 15-17)
 test/              Unit and integration tests
 cmake/             RISC-V cross-compilation toolchain file
 doc/               RFC 8391 text
