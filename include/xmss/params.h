@@ -17,6 +17,7 @@
  *   len  = 131
  */
 #define XMSS_MAX_WOTS_LEN 131U
+#define XMSS_MAX_BDS_K    4U   /* max BDS retain parameter (must be even, ≤ XMSS_MAX_H) */
 
 /* Hash function identifiers */
 #define XMSS_FUNC_SHA2    0

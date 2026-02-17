@@ -22,6 +22,7 @@
 #include "wots.h"
 #include "ltree.h"
 #include "treehash.h"
+#include "bds.h"
 
 /* ====================================================================
  * SK / PK field accessors
@@ -212,5 +213,132 @@ int xmss_verify(const xmss_params *p,
     if (ct_memcmp(computed_root, pk_root, p->n) != 0) {
         return XMSS_ERR_VERIFY;
     }
+    return XMSS_OK;
+}
+
+/* ====================================================================
+ * xmss_keygen_bds() - BDS-accelerated key generation
+ * ==================================================================== */
+
+int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                    xmss_bds_state *state, uint32_t bds_k,
+                    xmss_randombytes_fn randombytes)
+{
+    uint8_t  root[XMSS_MAX_N];
+    uint8_t  seeds[3 * XMSS_MAX_N];
+    xmss_adrs_t adrs;
+    int ret;
+
+    /* Validate bds_k */
+    if ((bds_k & 1) || bds_k > p->h) {
+        return XMSS_ERR_PARAMS;
+    }
+
+    /* Sample 3n random bytes: SK_SEED, SK_PRF, SEED */
+    ret = randombytes(seeds, 3 * p->n);
+    if (ret != 0) { return XMSS_ERR_ENTROPY; }
+
+    /* Zero the BDS state */
+    memset(state, 0, sizeof(*state));
+
+    /* Compute tree root with BDS state capture */
+    memset(&adrs, 0, sizeof(adrs));
+    xmss_adrs_set_layer(&adrs, 0);
+    xmss_adrs_set_tree(&adrs, 0);
+
+    bds_treehash_init(p, root, state, bds_k,
+                      seeds,           /* SK_SEED */
+                      seeds + 2*p->n,  /* SEED */
+                      &adrs);
+
+    /* Serialise PK */
+    ull_to_bytes(pk, 4, p->oid);
+    memcpy(pk + pk_off_root(p), root, p->n);
+    memcpy(pk + pk_off_seed(p), seeds + 2*p->n, p->n);
+
+    /* Serialise SK */
+    ull_to_bytes(sk + sk_off_oid(p),  4,            p->oid);
+    ull_to_bytes(sk + sk_off_idx(p),  p->idx_bytes, 0);
+    memcpy(sk + sk_off_seed(p),     seeds,          p->n);
+    memcpy(sk + sk_off_prf(p),      seeds + p->n,   p->n);
+    memcpy(sk + sk_off_root(p),     root,            p->n);
+    memcpy(sk + sk_off_pub_seed(p), seeds + 2*p->n, p->n);
+
+    xmss_memzero(seeds, sizeof(seeds));
+    return XMSS_OK;
+}
+
+/* ====================================================================
+ * xmss_sign_bds() - BDS-accelerated signing
+ * ==================================================================== */
+
+int xmss_sign_bds(const xmss_params *p, uint8_t *sig,
+                  const uint8_t *msg, size_t msglen,
+                  uint8_t *sk, xmss_bds_state *state, uint32_t bds_k)
+{
+    uint64_t idx;
+    uint8_t  r[XMSS_MAX_N];
+    uint8_t  m_hash[XMSS_MAX_N];
+    xmss_adrs_t adrs;
+
+    const uint8_t *sk_seed  = sk + sk_off_seed(p);
+    const uint8_t *sk_prf   = sk + sk_off_prf(p);
+    const uint8_t *root     = sk + sk_off_root(p);
+    const uint8_t *pub_seed = sk + sk_off_pub_seed(p);
+
+    /* Read current index */
+    idx = bytes_to_ull(sk + sk_off_idx(p), p->idx_bytes);
+
+    if (idx > p->idx_max) {
+        return XMSS_ERR_EXHAUSTED;
+    }
+
+    /* Increment index in SK */
+    ull_to_bytes(sk + sk_off_idx(p), p->idx_bytes, idx + 1);
+
+    /* r = PRF(SK_PRF, toByte(idx, 32)) */
+    xmss_PRF_idx(p, r, sk_prf, idx);
+
+    /* m_hash = H_msg(r, root, idx, msg) */
+    xmss_H_msg(p, m_hash, r, root, idx, msg, msglen);
+
+    /* sig = idx || r || WOTS_sign(m_hash) || auth_path */
+    ull_to_bytes(sig, p->idx_bytes, idx);
+    memcpy(sig + p->idx_bytes, r, p->n);
+
+    /* WOTS+ signature */
+    memset(&adrs, 0, sizeof(adrs));
+    xmss_adrs_set_layer(&adrs, 0);
+    xmss_adrs_set_tree(&adrs, 0);
+    xmss_adrs_set_type(&adrs, XMSS_ADRS_TYPE_OTS);
+    xmss_adrs_set_ots(&adrs, (uint32_t)idx);
+
+    wots_sign(p,
+              sig + p->idx_bytes + p->n,
+              m_hash,
+              sk_seed, pub_seed, &adrs);
+
+    /* Auth path: copy from BDS state (O(1) instead of O(h * 2^h)) */
+    {
+        uint32_t i;
+        uint8_t *auth_out = sig + p->idx_bytes + p->n + p->len * p->n;
+        for (i = 0; i < p->h; i++) {
+            memcpy(auth_out + i * p->n, state->auth[i], p->n);
+        }
+    }
+
+    /* Advance BDS state for next signature */
+    memset(&adrs, 0, sizeof(adrs));
+    xmss_adrs_set_layer(&adrs, 0);
+    xmss_adrs_set_tree(&adrs, 0);
+
+    bds_round(p, state, bds_k, (uint32_t)idx, sk_seed, pub_seed, &adrs);
+
+    /* Run treehash updates: (h - bds_k) / 2 updates per signature */
+    if (p->h > bds_k) {
+        bds_treehash_update(p, state, bds_k, (p->h - bds_k) / 2,
+                            sk_seed, pub_seed, &adrs);
+    }
+
     return XMSS_OK;
 }

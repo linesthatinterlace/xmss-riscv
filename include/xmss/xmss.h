@@ -97,4 +97,92 @@ int xmss_verify(const xmss_params *p,
                 const uint8_t *msg, size_t msglen,
                 const uint8_t *sig, const uint8_t *pk);
 
+/* ====================================================================
+ * BDS-accelerated API
+ *
+ * BDS amortises auth path computation: signing is O(h) leaf computations
+ * instead of O(h * 2^h).  The BDS state is a separate caller-managed
+ * buffer (not stored in SK, which stays RFC-compatible).
+ * ==================================================================== */
+
+/** Per-level treehash instance (internal detail exposed for static sizing). */
+typedef struct {
+    uint8_t  node[XMSS_MAX_N];   /* partial/completed result */
+    uint32_t h;                   /* target height */
+    uint32_t next_idx;            /* next leaf to process */
+    uint8_t  stack_usage;         /* entries this instance has on shared stack */
+    uint8_t  completed;           /* 1 if treehash is done */
+} xmss_bds_treehash_inst;
+
+/**
+ * xmss_bds_state - BDS traversal state.
+ *
+ * Fixed-size, no pointers, no malloc (J1/J3).  Allocated by the caller
+ * on the stack or as a static/global.  Must be initialised by
+ * xmss_keygen_bds() and updated by each xmss_sign_bds() call.
+ */
+typedef struct xmss_bds_state {
+    /* Auth path for current leaf: h nodes of n bytes */
+    uint8_t auth[XMSS_MAX_H][XMSS_MAX_N];
+
+    /* Keep nodes: floor(h/2) nodes saved during bds_round */
+    uint8_t keep[XMSS_MAX_H / 2][XMSS_MAX_N];
+
+    /* Shared stack for treehash instances */
+    uint8_t  stack[XMSS_MAX_H + 1][XMSS_MAX_N];
+    uint8_t  stack_levels[XMSS_MAX_H + 1];
+    uint32_t stack_offset;
+
+    /* Treehash instances: one per level below (h - bds_k) */
+    xmss_bds_treehash_inst treehash[XMSS_MAX_H];
+
+    /* Retain stack for top bds_k levels.
+     * Size: sum_{j=0}^{k-1} 2^(j) - 1 = 2^k - k - 1 nodes.
+     * For k=0 this is unused.  For k=4: 11 nodes. */
+    uint8_t retain[((1U << XMSS_MAX_BDS_K) - XMSS_MAX_BDS_K - 1) > 0 ?
+                   ((1U << XMSS_MAX_BDS_K) - XMSS_MAX_BDS_K - 1) : 1][XMSS_MAX_N];
+
+    uint32_t next_leaf;  /* next leaf to compute during state_update */
+} xmss_bds_state;
+
+/**
+ * xmss_keygen_bds() - Generate an XMSS key pair with BDS state.
+ *
+ * Same as xmss_keygen() but also initialises the BDS state for
+ * subsequent BDS-accelerated signing.
+ *
+ * @p:           Parameter set.
+ * @pk:          Output public key (p->pk_bytes bytes).
+ * @sk:          Output secret key (p->sk_bytes bytes).
+ * @state:       Output BDS state (caller-allocated).
+ * @bds_k:       Retain parameter (must be even, 0 <= bds_k <= h).
+ * @randombytes: Caller-supplied entropy function.
+ *
+ * Returns XMSS_OK on success, XMSS_ERR_PARAMS if bds_k is invalid.
+ */
+int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                    xmss_bds_state *state, uint32_t bds_k,
+                    xmss_randombytes_fn randombytes);
+
+/**
+ * xmss_sign_bds() - Sign a message using BDS-accelerated auth path.
+ *
+ * Same as xmss_sign() but uses and updates the BDS state instead of
+ * recomputing the auth path from scratch.  O(h) leaf computations per
+ * signature instead of O(h * 2^h).
+ *
+ * @p:      Parameter set.
+ * @sig:    Output signature (p->sig_bytes bytes).
+ * @msg:    Message to sign.
+ * @msglen: Message length in bytes.
+ * @sk:     Secret key (p->sk_bytes bytes); leaf index incremented in place.
+ * @state:  BDS state (updated in place).
+ * @bds_k:  Retain parameter (same value used in keygen_bds).
+ *
+ * Returns XMSS_OK on success, XMSS_ERR_EXHAUSTED if key index exhausted.
+ */
+int xmss_sign_bds(const xmss_params *p, uint8_t *sig,
+                  const uint8_t *msg, size_t msglen,
+                  uint8_t *sk, xmss_bds_state *state, uint32_t bds_k);
+
 #endif /* XMSS_H */
