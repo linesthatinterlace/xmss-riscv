@@ -1,13 +1,16 @@
 /**
  * test_kat.c - Known Answer Tests cross-validated against xmss-reference
  *
+ * Uses BDS-accelerated keygen/sign for practical performance.
+ *
  * For each of the 4 h=10 XMSS parameter sets, we:
  *   1. Replay deterministic seeds (seed[i] = i for i = 0..3n-1)
- *   2. Keygen
- *   3. Override index to 512 (= 1 << (h-1))
- *   4. Sign single-byte message {37}
- *   5. SHAKE128-fingerprint pk (without OID) and sig
- *   6. Compare against fingerprints from xmss-reference test/vectors.c
+ *   2. Keygen (BDS)
+ *   3. SHAKE128-fingerprint pk (without OID) — validates tree root
+ *   4. Advance BDS state to idx=512 by signing 512 dummy messages
+ *   5. Sign single-byte message {37} at idx=512
+ *   6. SHAKE128-fingerprint sig — validates auth path at idx=512
+ *   7. Compare against fingerprints from xmss-reference test/vectors.c
  *
  * Reference SK layout (no OID): idx | SK_SEED | SK_PRF | root | PUB_SEED
  * Our SK layout:                OID(4) | idx | SK_SEED | SK_PRF | root | PUB_SEED
@@ -65,6 +68,7 @@ static const kat_vector_t vectors[] = {
 static void run_kat(const kat_vector_t *v)
 {
     xmss_params p;
+    xmss_bds_state *state;
     uint8_t *pk, *sk, *sig;
     uint8_t msg[1] = {37};
     uint8_t fp[10], expected[10];
@@ -77,12 +81,13 @@ static void run_kat(const kat_vector_t *v)
         return;
     }
 
-    pk  = (uint8_t *)malloc(p.pk_bytes);
-    sk  = (uint8_t *)malloc(p.sk_bytes);
-    sig = (uint8_t *)malloc(p.sig_bytes);
-    if (!pk || !sk || !sig) {
+    pk    = (uint8_t *)malloc(p.pk_bytes);
+    sk    = (uint8_t *)malloc(p.sk_bytes);
+    sig   = (uint8_t *)malloc(p.sig_bytes);
+    state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    if (!pk || !sk || !sig || !state) {
         TEST("malloc", 0);
-        free(pk); free(sk); free(sig);
+        free(pk); free(sk); free(sig); free(state);
         return;
     }
 
@@ -92,14 +97,8 @@ static void run_kat(const kat_vector_t *v)
     }
     kat_seed_off = 0;
 
-    /* Keygen with deterministic seeds */
-    xmss_keygen(&p, pk, sk, kat_randombytes);
-
-    /* Override index to 1 << (h-1) = 512 for h=10 */
-    ull_to_bytes(sk + 4, p.idx_bytes, (uint64_t)1 << (p.h - 1));
-
-    /* Sign */
-    xmss_sign(&p, sig, msg, 1, sk);
+    /* Keygen with deterministic seeds (BDS) */
+    xmss_keygen_bds(&p, pk, sk, state, 0, kat_randombytes);
 
     /* Verify PK fingerprint (skip 4-byte OID to match reference layout) */
     shake128_local(fp, 10, pk + 4, p.pk_bytes - 4);
@@ -112,6 +111,18 @@ static void run_kat(const kat_vector_t *v)
     } else {
         TEST(label, 1);
     }
+
+    /* Advance BDS state to idx=512 by signing dummy messages */
+    {
+        uint32_t target_idx = (uint32_t)1 << (p.h - 1);  /* 512 for h=10 */
+        uint8_t dummy[1] = {0};
+        for (i = 0; i < target_idx; i++) {
+            xmss_sign_bds(&p, sig, dummy, 1, sk, state, 0);
+        }
+    }
+
+    /* Sign the KAT message at idx=512 */
+    xmss_sign_bds(&p, sig, msg, 1, sk, state, 0);
 
     /* Verify signature fingerprint */
     shake128_local(fp, 10, sig, p.sig_bytes);
@@ -126,13 +137,16 @@ static void run_kat(const kat_vector_t *v)
     }
 
     /* Also verify the signature is valid */
-    int rc = xmss_verify(&p, msg, 1, sig, pk);
-    snprintf(label, sizeof(label), "%s: verify own sig", v->name);
-    TEST(label, rc == XMSS_OK);
+    {
+        int rc = xmss_verify(&p, msg, 1, sig, pk);
+        snprintf(label, sizeof(label), "%s: verify own sig", v->name);
+        TEST(label, rc == XMSS_OK);
+    }
 
     free(pk);
     free(sk);
     free(sig);
+    free(state);
 }
 
 int main(void)

@@ -54,3 +54,12 @@ target_include_directories(test_kat PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 add_test(NAME test_kat COMMAND test_kat)
+
+# test_bds (BDS-specific parameter tests: bds_k validation, k=2/4)
+add_executable(test_bds test_bds.c)
+target_link_libraries(test_bds xmss)
+target_include_directories(test_bds PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME test_bds COMMAND test_bds)

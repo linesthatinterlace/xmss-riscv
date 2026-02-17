@@ -9,14 +9,17 @@ Context for Claude Code when working on this repository.
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 
-# Run tests
-ctest --test-dir build --output-on-failure
+# Run all tests (Release build recommended — Debug/ASan is very slow for crypto)
+cmake -B build-rel -DCMAKE_BUILD_TYPE=Release && cmake --build build-rel
+ctest --test-dir build-rel --output-on-failure
 
 # Run a single test binary directly
-./build/test/test_params
-./build/test/test_hash
-./build/test/test_wots
-./build/test/test_xmss   # slow: full tree traversal (~250s native, ~4min RISC-V)
+./build-rel/test/test_params
+./build-rel/test/test_hash
+./build-rel/test/test_wots
+./build-rel/test/test_xmss   # BDS keygen/sign/verify roundtrip + sequential
+./build-rel/test/test_kat    # KAT cross-validation (advances BDS to idx=512)
+./build-rel/test/test_bds    # BDS-specific: bds_k validation, k=2/k=4 roundtrips
 
 # RISC-V cross-compile
 cmake -B build-rv -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake -DCMAKE_BUILD_TYPE=Release
@@ -31,7 +34,7 @@ qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_xmss
 
 ### Hash abstraction boundary
 
-`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `xmss.c`) calls only:
+`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `bds.c`, `xmss.c`) calls only:
 
 ```c
 xmss_F(), xmss_H(), xmss_H_msg(), xmss_PRF(), xmss_PRF_keygen(), xmss_PRF_idx()
@@ -41,7 +44,8 @@ declared in `src/hash/hash_iface.h`. Do not add hash backend includes to any oth
 
 ### No malloc
 
-The entire library is allocation-free. All buffers are either stack-local or caller-provided. The largest stack allocations are:
+The entire library is allocation-free. All buffers are either stack-local or caller-provided. The largest allocations are:
+- `xmss_bds_state`: ~34 KB (caller-managed; see `include/xmss/xmss.h`)
 - `wots_buf_t`: `XMSS_MAX_WOTS_LEN * XMSS_MAX_N` = 131 × 64 = 8384 bytes (in `wots.c`)
 - `treehash_stack_t`: `(XMSS_MAX_H+1) * XMSS_MAX_N` = 21 × 64 = 1344 bytes (in `treehash.c`)
 
@@ -51,6 +55,7 @@ The entire library is allocation-free. All buffers are either stack-local or cal
 XMSS_MAX_N        64   // max hash output bytes (n)
 XMSS_MAX_H        20   // max tree height (h)
 XMSS_MAX_WOTS_LEN 131  // max WOTS+ chain count (len1+len2 for n=64, w=16)
+XMSS_MAX_BDS_K    4    // max BDS retain parameter (must be even, ≤ h)
 ```
 
 These must be kept consistent with the OID table in `src/params.c`. If new parameter sets are added, recalculate and update accordingly.
@@ -105,14 +110,18 @@ These are enforced and must not be broken by any change:
 | `test_address` | ADRS serialisation, all setter types, set_type() zeroing |
 | `test_hash` | SHA-256, SHA-512 (FIPS 180-4 vectors), SHAKE-128, SHAKE-256 (NIST vectors), incremental API |
 | `test_wots` | sign→pkFromSig roundtrip (n=32 and n=64), wrong message detection |
-| `test_xmss` | keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; idx increment |
-| `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets |
+| `test_xmss` | BDS keygen/sign/verify roundtrip (3 param sets); bit-flip and wrong-message rejection; idx increment; sequential signing (20 sigs) |
+| `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets (advances BDS to idx=512 for sig fingerprint) |
+| `test_bds` | BDS-specific: bds_k validation (odd/too-large rejected); roundtrip and sequential signing with bds_k=2 and bds_k=4 |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
 ## Known limitations / future work
 
-- **Auth path**: naive O(h·2^h) — recomputes the full sibling subtree for each auth path node. Phase 7 (BDS algorithm) will replace this. The correct F/H construction (3 PRF calls per F, 4 per H) makes this ~3x slower than before — BDS is now critical for practical signing performance.
+- **Auth path**: Two implementations available:
+  - **Naive** (`xmss_sign`): O(h·2^h) per signature — recomputes the full sibling subtree. Impractical for h≥16.
+  - **BDS** (`xmss_sign_bds`): O(h/2) leaf computations per signature. Requires a caller-managed `xmss_bds_state` initialised by `xmss_keygen_bds()`. SK stays RFC-compatible; BDS state is separate.
+  - BDS `bds_k` parameter (0, 2, or 4): trades retain storage for fewer treehash updates. Default 0 is simplest.
 - **XMSS-MT**: deferred. The layer/tree address fields and `d` parameter are already in `xmss_params` and `xmss_adrs_t`.
 - **xmss_sign exhaustion**: returns `XMSS_ERR_EXHAUSTED` when `idx > idx_max`, but there is no separate "remaining uses" query function yet.
 
@@ -125,11 +134,8 @@ None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/
 ## Comments
 Some comments for reviewing models:
 
-- User comment: all the RFC references seem off to me. For instance, RFC 8391 §2.7.3 simply doesn't
-exist but is referred to multiple times - I think this should be 2.5. This needs reviewing. The RFC is here:
-https://www.rfc-editor.org/rfc/rfc8391.txt. User can download manually if needed.
 - Claude Sonnet 4.5 comment: SHA-2 domain separation in xmss_hash.c — the bitmask XOR construction for F and H is the most complex and RFC-sensitive part. Worth scrutinising carefully against RFC 8391 §5.1.
 - Claude Sonnet 4.5 comment: xmss_PRF_idx — this is a slight departure from the ADRS-based PRF interface (it takes a raw uint64_t index). The review should confirm it matches the RFC's PRF(SK_PRF, toByte(idx, 32)) exactly. (User comment: probably need to fix
 this and make it match the spec...)
-- Claude Sonnet 4.5 comment: Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)) and isn't subtle code, but the indexing logic for sibling nodes is worth a second look. (User comment: is this acceptably slow? Is this avoidable?)
+- Claude Sonnet 4.5 comment: Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)). (Resolved: BDS implementation in src/bds.c replaces it for practical use.)
 - Claude Sonnet 4.5 comment: test_xmss.c uses malloc — the integration test allocates pk/sk/sig on the heap for convenience, which is fine for test code but worth noting is not representative of the library itself.
