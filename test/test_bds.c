@@ -140,5 +140,9 @@ int main(void)
     printf("--- sequential (k=2) ---\n");
     test_sequential_k(OID_XMSS_SHA2_10_256, "XMSS-SHA2_10_256", 2);
 
+    printf("--- sequential (k=4) ---\n");
+    test_sequential_k(OID_XMSS_SHA2_10_256,  "XMSS-SHA2_10_256",  4);
+    test_sequential_k(OID_XMSS_SHAKE_10_256, "XMSS-SHAKE_10_256", 4);
+
     return tests_done();
 }

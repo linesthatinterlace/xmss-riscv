@@ -139,6 +139,18 @@ int main(void)
         TEST_BYTES("SHAKE256 empty 32 bytes", out, expected, 32);
     }
 
+    /* SHAKE256("abc", 32 bytes) — NIST CAVP */
+    {
+        static const uint8_t expected[] = {
+            0x48,0x33,0x66,0x60,0x13,0x60,0xa8,0x77,
+            0x1c,0x68,0x63,0x08,0x0c,0xc4,0x11,0x4d,
+            0x8d,0xb4,0x45,0x30,0xf8,0xf1,0xe1,0xee,
+            0x4f,0x94,0xea,0x37,0xe7,0x8b,0x57,0x39
+        };
+        shake256_local(out, 32, (const uint8_t *)"abc", 3);
+        TEST_BYTES("SHAKE256 abc 32 bytes", out, expected, 32);
+    }
+
     /* ----------------------------------------------------------------
      * SHAKE incremental API: same result as one-shot
      * ---------------------------------------------------------------- */
@@ -159,6 +171,24 @@ int main(void)
         TEST_BYTES("SHAKE128 incremental == oneshot", oneshot, incremental, 32);
     }
 
+    /* SHAKE256 incremental API: same result as one-shot */
+    {
+        uint8_t oneshot[32];
+        uint8_t incremental[32];
+        const char *msg = "The quick brown fox";
+
+        shake256_local(oneshot, 32, (const uint8_t *)msg, strlen(msg));
+
+        shake256_ctx_t ctx;
+        shake256_ctx_init(&ctx);
+        shake256_ctx_absorb(&ctx, (const uint8_t *)msg, 10);
+        shake256_ctx_absorb(&ctx, (const uint8_t *)msg + 10, strlen(msg) - 10);
+        shake256_ctx_finalize(&ctx);
+        shake256_ctx_squeeze(&ctx, incremental, 32);
+
+        TEST_BYTES("SHAKE256 incremental == oneshot", oneshot, incremental, 32);
+    }
+
     /* ----------------------------------------------------------------
      * SHA-256 incremental API: same result as one-shot
      * ---------------------------------------------------------------- */
@@ -176,6 +206,23 @@ int main(void)
         sha256_ctx_final(&ctx, incremental);
 
         TEST_BYTES("SHA-256 incremental == oneshot", oneshot, incremental, 32);
+    }
+
+    /* SHA-512 incremental API: same result as one-shot */
+    {
+        uint8_t oneshot[64];
+        uint8_t incremental[64];
+        const char *msg = "abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ01";
+
+        sha512_local(oneshot, (const uint8_t *)msg, strlen(msg));
+
+        sha512_ctx_t ctx;
+        sha512_ctx_init(&ctx);
+        sha512_ctx_update(&ctx, (const uint8_t *)msg, 32);
+        sha512_ctx_update(&ctx, (const uint8_t *)msg + 32, strlen(msg) - 32);
+        sha512_ctx_final(&ctx, incremental);
+
+        TEST_BYTES("SHA-512 incremental == oneshot", oneshot, incremental, 64);
     }
 
     return tests_done();

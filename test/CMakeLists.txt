@@ -90,3 +90,14 @@ target_include_directories(test_xmssmt PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 add_test(NAME test_xmssmt COMMAND test_xmssmt)
+
+# test_utils_internal (unit tests for ct_memcmp, ull_to_bytes, bytes_to_ull,
+#                      xmss_memzero, xmss_PRF_idx, key exhaustion)
+add_executable(test_utils_internal test_utils_internal.c)
+target_link_libraries(test_utils_internal xmss)
+target_include_directories(test_utils_internal PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/hash
+)
+add_test(NAME test_utils_internal COMMAND test_utils_internal)

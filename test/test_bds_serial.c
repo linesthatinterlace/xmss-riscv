@@ -221,11 +221,20 @@ int main(void)
     printf("--- round-trip mid-signing (SHA2_10_256, k=2) ---\n");
     test_roundtrip_mid_signing(OID_XMSS_SHA2_10_256, "SHA2_10_256", 2);
 
+    printf("--- round-trip after keygen (SHA2_10_256, k=4) ---\n");
+    test_roundtrip_after_keygen(OID_XMSS_SHA2_10_256, "SHA2_10_256", 4);
+
+    printf("--- round-trip mid-signing (SHA2_10_256, k=4) ---\n");
+    test_roundtrip_mid_signing(OID_XMSS_SHA2_10_256, "SHA2_10_256", 4);
+
     printf("--- byte-exact (SHA2_10_256, k=0) ---\n");
     test_byte_exact(OID_XMSS_SHA2_10_256, "SHA2_10_256", 0);
 
     printf("--- byte-exact (SHA2_10_256, k=2) ---\n");
     test_byte_exact(OID_XMSS_SHA2_10_256, "SHA2_10_256", 2);
+
+    printf("--- byte-exact (SHA2_10_256, k=4) ---\n");
+    test_byte_exact(OID_XMSS_SHA2_10_256, "SHA2_10_256", 4);
 
     return tests_done();
 }
