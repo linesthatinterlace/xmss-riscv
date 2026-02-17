@@ -119,16 +119,10 @@ These are enforced and must not be broken by any change:
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
-## Known limitations / future work
+## Future work
 
-- **XMSS Auth path**: The default `xmss_keygen()`/`xmss_sign()` use BDS-accelerated O(h/2) auth path. Requires a caller-managed `xmss_bds_state`. SK stays RFC-compatible; BDS state is separate.
-  - BDS `bds_k` parameter (0, 2, or 4): trades retain storage for fewer treehash updates. Default 0 is simplest.
-  - Naive O(h·2^h) implementations are available as `xmss_keygen_naive()`/`xmss_sign_naive()` when `XMSS_NAIVE_AUTH_PATH` is defined. Impractical for h≥16.
-- **XMSS-MT**: Fully implemented in `src/xmssmt.c`. `xmssmt_keygen()`/`xmssmt_sign()`/`xmssmt_verify()` support all 32 RFC 8391 XMSS-MT parameter sets (d=2..12, h=20/40/60). Requires a caller-managed `xmssmt_state` (~780 KB).
-  - XMSS-MT OIDs use a 0x01000000 internal prefix to disambiguate from XMSS OIDs. `xmssmt_params_from_oid()` accepts both RFC and internal OIDs.
-  - `xmss_params.tree_height` = h/d (per-tree height); all BDS/treehash code uses `tree_height` instead of `h`.
-- **xmss_sign exhaustion**: returns `XMSS_ERR_EXHAUSTED` when `idx > idx_max`, but there is no separate "remaining uses" query function yet.
-- **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT is deferred (different SK format makes it non-trivial).
+- **Remaining-signatures query**: `xmss_sign`/`xmssmt_sign` return `XMSS_ERR_EXHAUSTED` when the index is spent, but there is no function to query how many signatures remain.
+- **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT parameter sets (the reference embeds BDS state in the SK buffer, so byte-level comparison requires a translation layer).
 
 ## Dependencies
 
