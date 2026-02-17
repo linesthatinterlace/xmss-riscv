@@ -9,7 +9,7 @@ A top-level `Makefile` wraps CMake for convenience:
 ```bash
 make            # Release build
 make test       # Build + run all tests (~2 min)
-make test-fast  # Build + run only fast tests (params, address, hash, wots)
+make test-fast  # Build + run only fast tests (params, address, hash, wots, xmssmt_params)
 make debug      # Debug build (ASan + UBSan — very slow for crypto tests)
 make rv         # RISC-V cross-compile
 make clean      # Remove all build directories
@@ -29,7 +29,7 @@ qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_xmss
 
 ### Hash abstraction boundary
 
-`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `bds.c`, `xmss.c`) calls only:
+`src/hash/xmss_hash.c` is the **sole** file that dispatches to SHA-2 or SHAKE. All algorithm code (`wots.c`, `ltree.c`, `treehash.c`, `bds.c`, `xmss.c`, `xmssmt.c`) calls only:
 
 ```c
 xmss_F(), xmss_H(), xmss_H_msg(), xmss_PRF(), xmss_PRF_keygen(), xmss_PRF_idx()
@@ -40,6 +40,7 @@ declared in `src/hash/hash_iface.h`. Do not add hash backend includes to any oth
 ### No malloc
 
 The entire library is allocation-free. All buffers are either stack-local or caller-provided. The largest allocations are:
+- `xmssmt_state`: ~780 KB (caller-managed; holds 2×MAX_D-1 BDS states + WOTS sig cache)
 - `xmss_bds_state`: ~34 KB (caller-managed; see `include/xmss/xmss.h`)
 - `wots_buf_t`: `XMSS_MAX_WOTS_LEN * XMSS_MAX_N` = 131 × 64 = 8384 bytes (in `wots.c`)
 - `treehash_stack_t`: `(XMSS_MAX_H+1) * XMSS_MAX_N` = 21 × 64 = 1344 bytes (in `treehash.c`)
@@ -48,9 +49,11 @@ The entire library is allocation-free. All buffers are either stack-local or cal
 
 ```c
 XMSS_MAX_N        64   // max hash output bytes (n)
-XMSS_MAX_H        20   // max tree height (h)
+XMSS_MAX_H        20   // max per-tree height (BDS arrays sized by this)
+XMSS_MAX_FULL_H   60   // max total tree height across all layers
+XMSS_MAX_D        12   // max number of layers (XMSSMT-*_60/12_*)
 XMSS_MAX_WOTS_LEN 131  // max WOTS+ chain count (len1+len2 for n=64, w=16)
-XMSS_MAX_BDS_K    4    // max BDS retain parameter (must be even, ≤ h)
+XMSS_MAX_BDS_K    4    // max BDS retain parameter (must be even, ≤ tree_height)
 ```
 
 These must be kept consistent with the OID table in `src/params.c`. If new parameter sets are added, recalculate and update accordingly.
@@ -66,10 +69,12 @@ These must be kept consistent with the OID table in `src/params.c`. If new param
 ```
 SK: OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)
 PK: OID(4) | root(n) | SEED(n)
-Sig: idx(idx_bytes) | r(n) | sig_WOTS(len*n) | auth(h*n)
+XMSS Sig:    idx(idx_bytes) | r(n) | sig_WOTS(len*n) | auth(tree_height*n)
+XMSS-MT Sig: idx(idx_bytes) | r(n) | d × [sig_WOTS(len*n) | auth(tree_height*n)]
 ```
 
-Offset helpers are static functions at the top of `src/xmss.c`. Use them, do not hardcode offsets.
+SK/PK layout is the same for XMSS and XMSS-MT (only idx_bytes differs).
+Offset helpers are static functions at the top of `src/xmss.c` and `src/xmssmt.c`.
 
 ### SHA-2 domain separation (RFC 8391 §5.1)
 
@@ -101,7 +106,7 @@ These are enforced and must not be broken by any change:
 
 | Binary | What it tests |
 |--------|--------------|
-| `test_params` | All 12 OIDs: n, w, h, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes |
+| `test_params` | All 12 XMSS OIDs: n, w, h, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes |
 | `test_address` | ADRS serialisation, all setter types, set_type() zeroing |
 | `test_hash` | SHA-256, SHA-512 (FIPS 180-4 vectors), SHAKE-128, SHAKE-256 (NIST vectors), incremental API |
 | `test_wots` | sign→pkFromSig roundtrip (n=32 and n=64), wrong message detection |
@@ -109,16 +114,21 @@ These are enforced and must not be broken by any change:
 | `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets (advances BDS to idx=512 for sig fingerprint) |
 | `test_bds` | BDS-specific: bds_k validation (odd/too-large rejected); roundtrip and sequential signing with bds_k=2 and bds_k=4 |
 | `test_bds_serial` | BDS serialization: round-trip after keygen, mid-signing, byte-exact, size consistency, multiple param sets, bds_k=2 |
+| `test_xmssmt_params` | All 32 XMSS-MT OIDs: n, w, h, d, tree_height, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes; RFC and internal OID lookup |
+| `test_xmssmt` | XMSS-MT keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; sequential signing (5 sigs); tree boundary crossing (1024+ sigs) |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
 ## Known limitations / future work
 
-- **Auth path**: The default `xmss_keygen()`/`xmss_sign()` use BDS-accelerated O(h/2) auth path. Requires a caller-managed `xmss_bds_state`. SK stays RFC-compatible; BDS state is separate.
+- **XMSS Auth path**: The default `xmss_keygen()`/`xmss_sign()` use BDS-accelerated O(h/2) auth path. Requires a caller-managed `xmss_bds_state`. SK stays RFC-compatible; BDS state is separate.
   - BDS `bds_k` parameter (0, 2, or 4): trades retain storage for fewer treehash updates. Default 0 is simplest.
   - Naive O(h·2^h) implementations are available as `xmss_keygen_naive()`/`xmss_sign_naive()` when `XMSS_NAIVE_AUTH_PATH` is defined. Impractical for h≥16.
-- **XMSS-MT**: deferred. The layer/tree address fields and `d` parameter are already in `xmss_params` and `xmss_adrs_t`.
+- **XMSS-MT**: Fully implemented in `src/xmssmt.c`. `xmssmt_keygen()`/`xmssmt_sign()`/`xmssmt_verify()` support all 32 RFC 8391 XMSS-MT parameter sets (d=2..12, h=20/40/60). Requires a caller-managed `xmssmt_state` (~780 KB).
+  - XMSS-MT OIDs use a 0x01000000 internal prefix to disambiguate from XMSS OIDs. `xmssmt_params_from_oid()` accepts both RFC and internal OIDs.
+  - `xmss_params.tree_height` = h/d (per-tree height); all BDS/treehash code uses `tree_height` instead of `h`.
 - **xmss_sign exhaustion**: returns `XMSS_ERR_EXHAUSTED` when `idx > idx_max`, but there is no separate "remaining uses" query function yet.
+- **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT is deferred (different SK format makes it non-trivial).
 
 ## Dependencies
 

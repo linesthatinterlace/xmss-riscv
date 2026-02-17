@@ -23,7 +23,7 @@ static uint32_t retain_count(uint32_t bds_k)
 uint32_t xmss_bds_serialized_size(const xmss_params *p, uint32_t bds_k)
 {
     uint32_t n = p->n;
-    uint32_t h = p->h;
+    uint32_t h = p->tree_height;
     uint32_t th_count = h - bds_k;
     uint32_t rc = retain_count(bds_k);
 
@@ -41,7 +41,7 @@ int xmss_bds_serialize(const xmss_params *p, uint8_t *buf,
                        const xmss_bds_state *state, uint32_t bds_k)
 {
     uint32_t n = p->n;
-    uint32_t h = p->h;
+    uint32_t h = p->tree_height;
     uint32_t th_count = h - bds_k;
     uint32_t rc = retain_count(bds_k);
     uint32_t off = 0;
@@ -103,7 +103,7 @@ int xmss_bds_deserialize(const xmss_params *p, xmss_bds_state *state,
                          const uint8_t *buf, uint32_t bds_k)
 {
     uint32_t n = p->n;
-    uint32_t h = p->h;
+    uint32_t h = p->tree_height;
     uint32_t th_count = h - bds_k;
     uint32_t rc = retain_count(bds_k);
     uint32_t off = 0;

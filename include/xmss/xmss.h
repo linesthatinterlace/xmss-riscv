@@ -194,6 +194,85 @@ int xmss_bds_deserialize(const xmss_params *p, xmss_bds_state *state,
                          const uint8_t *buf, uint32_t bds_k);
 
 /* ====================================================================
+ * XMSS-MT (Multi-Tree) API
+ *
+ * XMSS-MT (RFC 8391 §4.2) organises d layers of XMSS trees into a
+ * hypertree.  Each layer has tree height h/d.  Total signing capacity
+ * is 2^h messages.
+ *
+ * The xmssmt_state holds 2*d-1 BDS states (d current + d-1 next)
+ * plus d-1 cached WOTS signatures for cross-layer signing.
+ * ==================================================================== */
+
+/**
+ * xmssmt_state - XMSS-MT traversal state.
+ *
+ * Manages BDS states for all d layers plus cached WOTS signatures.
+ * Statically sized using XMSS_MAX_D (Jasmin J1/J3).
+ * Allocated by the caller; must be initialised by xmssmt_keygen().
+ */
+typedef struct xmssmt_state {
+    /* 2*d-1 BDS states:
+     * bds[0..d-1]    = current tree state for each layer
+     * bds[d..2*d-2]  = "next" tree state for layers 0..d-2 */
+    xmss_bds_state bds[2 * XMSS_MAX_D - 1];
+
+    /* Cached WOTS signatures of lower-layer roots.
+     * wots_sigs[i] = signature of layer i's root by layer i+1.
+     * d-1 cached signatures. */
+    uint8_t wots_sigs[XMSS_MAX_D - 1][XMSS_MAX_WOTS_LEN * XMSS_MAX_N];
+} xmssmt_state;
+
+/**
+ * xmssmt_keygen() - Generate an XMSS-MT key pair with hypertree state.
+ *
+ * @p:           Parameter set (must have d > 1).
+ * @pk:          Output public key (p->pk_bytes bytes).
+ * @sk:          Output secret key (p->sk_bytes bytes).
+ * @state:       Output hypertree state (caller-allocated).
+ * @bds_k:       BDS retain parameter (must be even, 0 <= bds_k <= tree_height).
+ * @randombytes: Caller-supplied entropy function.
+ *
+ * Returns XMSS_OK on success.
+ */
+int xmssmt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                  xmssmt_state *state, uint32_t bds_k,
+                  xmss_randombytes_fn randombytes);
+
+/**
+ * xmssmt_sign() - Sign a message using XMSS-MT hypertree.
+ *
+ * @p:      Parameter set (must have d > 1).
+ * @sig:    Output signature (p->sig_bytes bytes).
+ * @msg:    Message to sign.
+ * @msglen: Message length in bytes.
+ * @sk:     Secret key (p->sk_bytes bytes); index incremented in place.
+ * @state:  Hypertree state (updated in place).
+ * @bds_k:  BDS retain parameter (same value used in keygen).
+ *
+ * Returns XMSS_OK on success, XMSS_ERR_EXHAUSTED if index exhausted.
+ */
+int xmssmt_sign(const xmss_params *p, uint8_t *sig,
+                const uint8_t *msg, size_t msglen,
+                uint8_t *sk, xmssmt_state *state, uint32_t bds_k);
+
+/**
+ * xmssmt_verify() - Verify an XMSS-MT signature.
+ *
+ * @p:      Parameter set (must have d > 1).
+ * @msg:    Message that was signed.
+ * @msglen: Message length.
+ * @sig:    Signature (p->sig_bytes bytes).
+ * @pk:     Public key (p->pk_bytes bytes).
+ *
+ * Returns XMSS_OK if valid, XMSS_ERR_VERIFY if invalid.
+ * Stateless — no BDS state needed.
+ */
+int xmssmt_verify(const xmss_params *p,
+                  const uint8_t *msg, size_t msglen,
+                  const uint8_t *sig, const uint8_t *pk);
+
+/* ====================================================================
  * Naive API (gated behind XMSS_NAIVE_AUTH_PATH)
  *
  * These use O(h * 2^h) auth path computation per signature.

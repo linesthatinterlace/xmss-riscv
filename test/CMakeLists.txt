@@ -72,3 +72,21 @@ target_include_directories(test_bds_serial PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 add_test(NAME test_bds_serial COMMAND test_bds_serial)
+
+# test_xmssmt_params (XMSS-MT parameter validation)
+add_executable(test_xmssmt_params test_xmssmt_params.c)
+target_link_libraries(test_xmssmt_params xmss)
+target_include_directories(test_xmssmt_params PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME test_xmssmt_params COMMAND test_xmssmt_params)
+
+# test_xmssmt (XMSS-MT integration: keygen/sign/verify)
+add_executable(test_xmssmt test_xmssmt.c)
+target_link_libraries(test_xmssmt xmss)
+target_include_directories(test_xmssmt PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME test_xmssmt COMMAND test_xmssmt)

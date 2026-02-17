@@ -10,7 +10,9 @@
 
 /* Maximums for static buffer sizing (Jasmin Rule J1: no VLAs) */
 #define XMSS_MAX_N        64U
-#define XMSS_MAX_H        20U
+#define XMSS_MAX_H        20U   /* max per-tree height (BDS arrays sized by this) */
+#define XMSS_MAX_FULL_H   60U   /* max total tree height across all layers */
+#define XMSS_MAX_D        12U   /* max number of layers (XMSSMT-*_60/12_*) */
 /* WOTS+ len for n=64, w=16 (RFC 8391 standard sets):
  *   len1 = ceil(8*64/log2(16)) = ceil(512/4) = 128
  *   len2 = floor(log2(128*15)/4) + 1 = floor(10.9/4) + 1 = 3
@@ -25,12 +27,14 @@
 #define XMSS_FUNC_SHAKE256 2
 
 /**
- * xmss_params - all derived parameters for one XMSS instance.
+ * xmss_params - all derived parameters for one XMSS/XMSS-MT instance.
  *
- * Fields are derived from (n, w, h, func) by xmss_params_from_oid().
+ * Fields are derived from (n, w, h, d, func) by xmss_params_from_oid()
+ * or xmssmt_params_from_oid().
  * Never modify fields directly; treat as read-only after initialisation.
  *
- * The field d is always 1 for XMSS; present for XMSS-MT generalisation.
+ * For XMSS (d=1): tree_height == h.
+ * For XMSS-MT (d>1): tree_height = h/d (per-tree height).
  */
 typedef struct {
     uint32_t oid;
@@ -41,10 +45,11 @@ typedef struct {
     uint32_t len1;        /* ceil(8*n / log2(w)) */
     uint32_t len2;        /* floor(log2(len1*(w-1)) / log2(w)) + 1 */
     uint32_t len;         /* len1 + len2 */
-    uint32_t h;           /* tree height */
-    uint32_t d;           /* number of layers (always 1 for XMSS) */
+    uint32_t h;           /* full tree height (h for XMSS, h_total for XMSS-MT) */
+    uint32_t tree_height; /* per-tree height: h for XMSS (d=1), h/d for XMSS-MT */
+    uint32_t d;           /* number of layers (1 for XMSS, >1 for XMSS-MT) */
     uint32_t pad_len;     /* PRF padding length (n for standard; 4 for n=24) */
-    uint32_t idx_bytes;   /* ceil(h/8) - bytes to encode leaf index */
+    uint32_t idx_bytes;   /* bytes to encode leaf index: 4 for XMSS, ceil(h/8) for MT */
     uint64_t idx_max;     /* 2^h - 1 - maximum leaf index */
     uint32_t sig_bytes;   /* total signature bytes */
     uint32_t pk_bytes;    /* total public key bytes */
@@ -67,7 +72,24 @@ int xmss_params_from_oid(xmss_params *p, uint32_t oid);
  */
 int xmss_params_from_name(xmss_params *p, const char *name);
 
-/* RFC 8391 Appendix A OID values */
+/**
+ * xmssmt_params_from_oid() - populate params from an XMSS-MT OID.
+ *
+ * Accepts RFC 8391 XMSS-MT OIDs (0x00000001-0x00000020).
+ * Internally stores with 0x01000000 prefix to disambiguate from XMSS OIDs.
+ * Returns 0 on success, -1 if OID is not recognised.
+ */
+int xmssmt_params_from_oid(xmss_params *p, uint32_t oid);
+
+/**
+ * xmssmt_params_from_name() - populate params from an XMSS-MT name string.
+ *
+ * Name format: "XMSSMT-SHA2_20/2_256", "XMSSMT-SHAKE_40/4_512", etc.
+ * Returns 0 on success, -1 if name is not recognised.
+ */
+int xmssmt_params_from_name(xmss_params *p, const char *name);
+
+/* RFC 8391 Appendix A — XMSS OID values */
 #define OID_XMSS_SHA2_10_256   0x00000001U
 #define OID_XMSS_SHA2_16_256   0x00000002U
 #define OID_XMSS_SHA2_20_256   0x00000003U
@@ -80,5 +102,54 @@ int xmss_params_from_name(xmss_params *p, const char *name);
 #define OID_XMSS_SHAKE_10_512  0x0000000AU
 #define OID_XMSS_SHAKE_16_512  0x0000000BU
 #define OID_XMSS_SHAKE_20_512  0x0000000CU
+
+/*
+ * RFC 8391 Appendix B — XMSS-MT OID values.
+ *
+ * The RFC uses a *separate* IANA registry for XMSS-MT (0x00000001-0x00000020).
+ * To disambiguate from XMSS OIDs in our single OID table, we store them
+ * internally with a 0x01000000 prefix.  The serialized PK/SK/sig use RFC OIDs.
+ */
+#define OID_XMSSMT_PREFIX           0x01000000U
+
+/* SHA-2 based, n=32 */
+#define OID_XMSSMT_SHA2_20_2_256    0x01000001U
+#define OID_XMSSMT_SHA2_20_4_256    0x01000002U
+#define OID_XMSSMT_SHA2_40_2_256    0x01000003U
+#define OID_XMSSMT_SHA2_40_4_256    0x01000004U
+#define OID_XMSSMT_SHA2_40_8_256    0x01000005U
+#define OID_XMSSMT_SHA2_60_3_256    0x01000006U
+#define OID_XMSSMT_SHA2_60_6_256    0x01000007U
+#define OID_XMSSMT_SHA2_60_12_256   0x01000008U
+
+/* SHA-2 based, n=64 */
+#define OID_XMSSMT_SHA2_20_2_512    0x01000009U
+#define OID_XMSSMT_SHA2_20_4_512    0x0100000AU
+#define OID_XMSSMT_SHA2_40_2_512    0x0100000BU
+#define OID_XMSSMT_SHA2_40_4_512    0x0100000CU
+#define OID_XMSSMT_SHA2_40_8_512    0x0100000DU
+#define OID_XMSSMT_SHA2_60_3_512    0x0100000EU
+#define OID_XMSSMT_SHA2_60_6_512    0x0100000FU
+#define OID_XMSSMT_SHA2_60_12_512   0x01000010U
+
+/* SHAKE based, n=32 */
+#define OID_XMSSMT_SHAKE_20_2_256   0x01000011U
+#define OID_XMSSMT_SHAKE_20_4_256   0x01000012U
+#define OID_XMSSMT_SHAKE_40_2_256   0x01000013U
+#define OID_XMSSMT_SHAKE_40_4_256   0x01000014U
+#define OID_XMSSMT_SHAKE_40_8_256   0x01000015U
+#define OID_XMSSMT_SHAKE_60_3_256   0x01000016U
+#define OID_XMSSMT_SHAKE_60_6_256   0x01000017U
+#define OID_XMSSMT_SHAKE_60_12_256  0x01000018U
+
+/* SHAKE based, n=64 */
+#define OID_XMSSMT_SHAKE_20_2_512   0x01000019U
+#define OID_XMSSMT_SHAKE_20_4_512   0x0100001AU
+#define OID_XMSSMT_SHAKE_40_2_512   0x0100001BU
+#define OID_XMSSMT_SHAKE_40_4_512   0x0100001CU
+#define OID_XMSSMT_SHAKE_40_8_512   0x0100001DU
+#define OID_XMSSMT_SHAKE_60_3_512   0x0100001EU
+#define OID_XMSSMT_SHAKE_60_6_512   0x0100001FU
+#define OID_XMSSMT_SHAKE_60_12_512  0x01000020U
 
 #endif /* XMSS_PARAMS_H */

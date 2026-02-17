@@ -26,6 +26,7 @@ static uint32_t floor_log2(uint32_t x)
 
 /*
  * Derive all computed fields given the primitive parameters.
+ * Caller must set: oid, func, n, w, h, d before calling.
  * Returns 0 on success.
  */
 static int derive_params(xmss_params *p)
@@ -42,8 +43,10 @@ static int derive_params(xmss_params *p)
 
     if (p->len > XMSS_MAX_WOTS_LEN) { return -1; }
 
-    /* d = 1 for XMSS */
-    p->d = 1;
+    /* per-tree height */
+    p->tree_height = p->h / p->d;
+
+    if (p->tree_height > XMSS_MAX_H) { return -1; }
 
     /* pad_len: n bytes for all standard parameter sets */
     p->pad_len = p->n;
@@ -59,22 +62,24 @@ static int derive_params(xmss_params *p)
     p->idx_max = ((uint64_t)1 << p->h) - 1;
 
     /*
-     * sig_bytes = idx_bytes + n + len*n + h*n
-     *           = idx_bytes + (1 + len + h) * n
-     * (RFC 8391 §4.1.8)
+     * Signature size:
+     * XMSS:    idx_bytes + n + len*n + h*n
+     * XMSS-MT: idx_bytes + n + d * (len + tree_height) * n
+     *        = idx_bytes + n + d*len*n + d*tree_height*n
+     *        = idx_bytes + n + d*len*n + h*n
      */
-    p->sig_bytes = p->idx_bytes + (1 + p->len + p->h) * p->n;
+    p->sig_bytes = p->idx_bytes + p->n + p->d * p->len * p->n + p->h * p->n;
 
     /*
      * pk_bytes = 4 (OID) + n (root) + n (SEED)
-     * (RFC 8391 §4.1.7)
+     * Same for XMSS and XMSS-MT.
      */
     p->pk_bytes = 4 + 2 * p->n;
 
     /*
      * sk_bytes = 4 (OID) + idx_bytes + n (SK_SEED) + n (SK_PRF)
      *          + n (root) + n (SEED)
-     * (RFC 8391 §4.1.3, Errata 7900)
+     * Same structure for XMSS and XMSS-MT.
      */
     p->sk_bytes = 4 + p->idx_bytes + 4 * p->n;
 
@@ -82,8 +87,8 @@ static int derive_params(xmss_params *p)
 }
 
 /*
- * Static OID table.  All 12 RFC 8391 XMSS parameter sets.
- * Fields: oid, func, n, w, h.  Remaining fields derived by derive_params().
+ * Static OID table.  All 12 XMSS + 32 XMSS-MT RFC 8391 parameter sets.
+ * Fields: oid, name, func, n, w, h, d.  Remaining fields derived by derive_params().
  */
 typedef struct {
     uint32_t oid;
@@ -92,38 +97,85 @@ typedef struct {
     uint32_t n;
     uint32_t w;
     uint32_t h;
+    uint32_t d;
 } oid_entry_t;
 
 static const oid_entry_t oid_table[] = {
+    /* ---- XMSS (d=1) ---- */
     /* SHA-2 based */
-    { OID_XMSS_SHA2_10_256,  "XMSS-SHA2_10_256",  XMSS_FUNC_SHA2,    32, 16, 10 },
-    { OID_XMSS_SHA2_16_256,  "XMSS-SHA2_16_256",  XMSS_FUNC_SHA2,    32, 16, 16 },
-    { OID_XMSS_SHA2_20_256,  "XMSS-SHA2_20_256",  XMSS_FUNC_SHA2,    32, 16, 20 },
-    { OID_XMSS_SHA2_10_512,  "XMSS-SHA2_10_512",  XMSS_FUNC_SHA2,    64, 16, 10 },
-    { OID_XMSS_SHA2_16_512,  "XMSS-SHA2_16_512",  XMSS_FUNC_SHA2,    64, 16, 16 },
-    { OID_XMSS_SHA2_20_512,  "XMSS-SHA2_20_512",  XMSS_FUNC_SHA2,    64, 16, 20 },
+    { OID_XMSS_SHA2_10_256,  "XMSS-SHA2_10_256",  XMSS_FUNC_SHA2,    32, 16, 10, 1 },
+    { OID_XMSS_SHA2_16_256,  "XMSS-SHA2_16_256",  XMSS_FUNC_SHA2,    32, 16, 16, 1 },
+    { OID_XMSS_SHA2_20_256,  "XMSS-SHA2_20_256",  XMSS_FUNC_SHA2,    32, 16, 20, 1 },
+    { OID_XMSS_SHA2_10_512,  "XMSS-SHA2_10_512",  XMSS_FUNC_SHA2,    64, 16, 10, 1 },
+    { OID_XMSS_SHA2_16_512,  "XMSS-SHA2_16_512",  XMSS_FUNC_SHA2,    64, 16, 16, 1 },
+    { OID_XMSS_SHA2_20_512,  "XMSS-SHA2_20_512",  XMSS_FUNC_SHA2,    64, 16, 20, 1 },
     /* SHAKE based */
-    { OID_XMSS_SHAKE_10_256, "XMSS-SHAKE_10_256", XMSS_FUNC_SHAKE128, 32, 16, 10 },
-    { OID_XMSS_SHAKE_16_256, "XMSS-SHAKE_16_256", XMSS_FUNC_SHAKE128, 32, 16, 16 },
-    { OID_XMSS_SHAKE_20_256, "XMSS-SHAKE_20_256", XMSS_FUNC_SHAKE128, 32, 16, 20 },
-    { OID_XMSS_SHAKE_10_512, "XMSS-SHAKE_10_512", XMSS_FUNC_SHAKE256, 64, 16, 10 },
-    { OID_XMSS_SHAKE_16_512, "XMSS-SHAKE_16_512", XMSS_FUNC_SHAKE256, 64, 16, 16 },
-    { OID_XMSS_SHAKE_20_512, "XMSS-SHAKE_20_512", XMSS_FUNC_SHAKE256, 64, 16, 20 },
+    { OID_XMSS_SHAKE_10_256, "XMSS-SHAKE_10_256", XMSS_FUNC_SHAKE128, 32, 16, 10, 1 },
+    { OID_XMSS_SHAKE_16_256, "XMSS-SHAKE_16_256", XMSS_FUNC_SHAKE128, 32, 16, 16, 1 },
+    { OID_XMSS_SHAKE_20_256, "XMSS-SHAKE_20_256", XMSS_FUNC_SHAKE128, 32, 16, 20, 1 },
+    { OID_XMSS_SHAKE_10_512, "XMSS-SHAKE_10_512", XMSS_FUNC_SHAKE256, 64, 16, 10, 1 },
+    { OID_XMSS_SHAKE_16_512, "XMSS-SHAKE_16_512", XMSS_FUNC_SHAKE256, 64, 16, 16, 1 },
+    { OID_XMSS_SHAKE_20_512, "XMSS-SHAKE_20_512", XMSS_FUNC_SHAKE256, 64, 16, 20, 1 },
+
+    /* ---- XMSS-MT (d>1) ---- */
+    /* SHA-2 based, n=32 */
+    { OID_XMSSMT_SHA2_20_2_256,  "XMSSMT-SHA2_20/2_256",  XMSS_FUNC_SHA2,     32, 16, 20,  2 },
+    { OID_XMSSMT_SHA2_20_4_256,  "XMSSMT-SHA2_20/4_256",  XMSS_FUNC_SHA2,     32, 16, 20,  4 },
+    { OID_XMSSMT_SHA2_40_2_256,  "XMSSMT-SHA2_40/2_256",  XMSS_FUNC_SHA2,     32, 16, 40,  2 },
+    { OID_XMSSMT_SHA2_40_4_256,  "XMSSMT-SHA2_40/4_256",  XMSS_FUNC_SHA2,     32, 16, 40,  4 },
+    { OID_XMSSMT_SHA2_40_8_256,  "XMSSMT-SHA2_40/8_256",  XMSS_FUNC_SHA2,     32, 16, 40,  8 },
+    { OID_XMSSMT_SHA2_60_3_256,  "XMSSMT-SHA2_60/3_256",  XMSS_FUNC_SHA2,     32, 16, 60,  3 },
+    { OID_XMSSMT_SHA2_60_6_256,  "XMSSMT-SHA2_60/6_256",  XMSS_FUNC_SHA2,     32, 16, 60,  6 },
+    { OID_XMSSMT_SHA2_60_12_256, "XMSSMT-SHA2_60/12_256", XMSS_FUNC_SHA2,     32, 16, 60, 12 },
+    /* SHA-2 based, n=64 */
+    { OID_XMSSMT_SHA2_20_2_512,  "XMSSMT-SHA2_20/2_512",  XMSS_FUNC_SHA2,     64, 16, 20,  2 },
+    { OID_XMSSMT_SHA2_20_4_512,  "XMSSMT-SHA2_20/4_512",  XMSS_FUNC_SHA2,     64, 16, 20,  4 },
+    { OID_XMSSMT_SHA2_40_2_512,  "XMSSMT-SHA2_40/2_512",  XMSS_FUNC_SHA2,     64, 16, 40,  2 },
+    { OID_XMSSMT_SHA2_40_4_512,  "XMSSMT-SHA2_40/4_512",  XMSS_FUNC_SHA2,     64, 16, 40,  4 },
+    { OID_XMSSMT_SHA2_40_8_512,  "XMSSMT-SHA2_40/8_512",  XMSS_FUNC_SHA2,     64, 16, 40,  8 },
+    { OID_XMSSMT_SHA2_60_3_512,  "XMSSMT-SHA2_60/3_512",  XMSS_FUNC_SHA2,     64, 16, 60,  3 },
+    { OID_XMSSMT_SHA2_60_6_512,  "XMSSMT-SHA2_60/6_512",  XMSS_FUNC_SHA2,     64, 16, 60,  6 },
+    { OID_XMSSMT_SHA2_60_12_512, "XMSSMT-SHA2_60/12_512", XMSS_FUNC_SHA2,     64, 16, 60, 12 },
+    /* SHAKE based, n=32 */
+    { OID_XMSSMT_SHAKE_20_2_256,  "XMSSMT-SHAKE_20/2_256",  XMSS_FUNC_SHAKE128, 32, 16, 20,  2 },
+    { OID_XMSSMT_SHAKE_20_4_256,  "XMSSMT-SHAKE_20/4_256",  XMSS_FUNC_SHAKE128, 32, 16, 20,  4 },
+    { OID_XMSSMT_SHAKE_40_2_256,  "XMSSMT-SHAKE_40/2_256",  XMSS_FUNC_SHAKE128, 32, 16, 40,  2 },
+    { OID_XMSSMT_SHAKE_40_4_256,  "XMSSMT-SHAKE_40/4_256",  XMSS_FUNC_SHAKE128, 32, 16, 40,  4 },
+    { OID_XMSSMT_SHAKE_40_8_256,  "XMSSMT-SHAKE_40/8_256",  XMSS_FUNC_SHAKE128, 32, 16, 40,  8 },
+    { OID_XMSSMT_SHAKE_60_3_256,  "XMSSMT-SHAKE_60/3_256",  XMSS_FUNC_SHAKE128, 32, 16, 60,  3 },
+    { OID_XMSSMT_SHAKE_60_6_256,  "XMSSMT-SHAKE_60/6_256",  XMSS_FUNC_SHAKE128, 32, 16, 60,  6 },
+    { OID_XMSSMT_SHAKE_60_12_256, "XMSSMT-SHAKE_60/12_256", XMSS_FUNC_SHAKE128, 32, 16, 60, 12 },
+    /* SHAKE based, n=64 */
+    { OID_XMSSMT_SHAKE_20_2_512,  "XMSSMT-SHAKE_20/2_512",  XMSS_FUNC_SHAKE256, 64, 16, 20,  2 },
+    { OID_XMSSMT_SHAKE_20_4_512,  "XMSSMT-SHAKE_20/4_512",  XMSS_FUNC_SHAKE256, 64, 16, 20,  4 },
+    { OID_XMSSMT_SHAKE_40_2_512,  "XMSSMT-SHAKE_40/2_512",  XMSS_FUNC_SHAKE256, 64, 16, 40,  2 },
+    { OID_XMSSMT_SHAKE_40_4_512,  "XMSSMT-SHAKE_40/4_512",  XMSS_FUNC_SHAKE256, 64, 16, 40,  4 },
+    { OID_XMSSMT_SHAKE_40_8_512,  "XMSSMT-SHAKE_40/8_512",  XMSS_FUNC_SHAKE256, 64, 16, 40,  8 },
+    { OID_XMSSMT_SHAKE_60_3_512,  "XMSSMT-SHAKE_60/3_512",  XMSS_FUNC_SHAKE256, 64, 16, 60,  3 },
+    { OID_XMSSMT_SHAKE_60_6_512,  "XMSSMT-SHAKE_60/6_512",  XMSS_FUNC_SHAKE256, 64, 16, 60,  6 },
+    { OID_XMSSMT_SHAKE_60_12_512, "XMSSMT-SHAKE_60/12_512", XMSS_FUNC_SHAKE256, 64, 16, 60, 12 },
 };
 
 #define OID_TABLE_SIZE ((uint32_t)(sizeof(oid_table) / sizeof(oid_table[0])))
+
+/* Populate params from a table entry */
+static int fill_from_entry(xmss_params *p, const oid_entry_t *e)
+{
+    p->oid  = e->oid;
+    p->func = e->func;
+    p->n    = e->n;
+    p->w    = e->w;
+    p->h    = e->h;
+    p->d    = e->d;
+    return derive_params(p);
+}
 
 int xmss_params_from_oid(xmss_params *p, uint32_t oid)
 {
     uint32_t i;
     for (i = 0; i < OID_TABLE_SIZE; i++) {
-        if (oid_table[i].oid == oid) {
-            p->oid  = oid_table[i].oid;
-            p->func = oid_table[i].func;
-            p->n    = oid_table[i].n;
-            p->w    = oid_table[i].w;
-            p->h    = oid_table[i].h;
-            return derive_params(p);
+        if (oid_table[i].oid == oid && oid_table[i].d == 1) {
+            return fill_from_entry(p, &oid_table[i]);
         }
     }
     return XMSS_ERR_PARAMS;
@@ -133,13 +185,35 @@ int xmss_params_from_name(xmss_params *p, const char *name)
 {
     uint32_t i;
     for (i = 0; i < OID_TABLE_SIZE; i++) {
-        if (strcmp(oid_table[i].name, name) == 0) {
-            p->oid  = oid_table[i].oid;
-            p->func = oid_table[i].func;
-            p->n    = oid_table[i].n;
-            p->w    = oid_table[i].w;
-            p->h    = oid_table[i].h;
-            return derive_params(p);
+        if (strcmp(oid_table[i].name, name) == 0 && oid_table[i].d == 1) {
+            return fill_from_entry(p, &oid_table[i]);
+        }
+    }
+    return XMSS_ERR_PARAMS;
+}
+
+int xmssmt_params_from_oid(xmss_params *p, uint32_t oid)
+{
+    /* Accept both RFC OIDs (0x00000001-0x00000020) and internal (0x01000001+) */
+    uint32_t internal_oid = oid;
+    uint32_t i;
+    if (oid > 0 && oid <= 0x00000020U) {
+        internal_oid = oid | OID_XMSSMT_PREFIX;
+    }
+    for (i = 0; i < OID_TABLE_SIZE; i++) {
+        if (oid_table[i].oid == internal_oid && oid_table[i].d > 1) {
+            return fill_from_entry(p, &oid_table[i]);
+        }
+    }
+    return XMSS_ERR_PARAMS;
+}
+
+int xmssmt_params_from_name(xmss_params *p, const char *name)
+{
+    uint32_t i;
+    for (i = 0; i < OID_TABLE_SIZE; i++) {
+        if (strcmp(oid_table[i].name, name) == 0 && oid_table[i].d > 1) {
+            return fill_from_entry(p, &oid_table[i]);
         }
     }
     return XMSS_ERR_PARAMS;

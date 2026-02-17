@@ -73,4 +73,19 @@ void bds_treehash_update(const xmss_params *p, struct xmss_bds_state *state,
                          const uint8_t *sk_seed, const uint8_t *seed,
                          xmss_adrs_t *adrs);
 
+/**
+ * bds_state_update() - Process one leaf for incremental tree building.
+ *
+ * Used by XMSS-MT to incrementally build "next" trees during signing.
+ * Generates leaf at state->next_leaf and merges onto the BDS state's
+ * own stack (not a local stack).  After 2^tree_height calls, the root
+ * sits in state->stack[0].
+ *
+ * Returns 0 on success, -1 if tree is already complete.
+ */
+int bds_state_update(const xmss_params *p, struct xmss_bds_state *state,
+                     uint32_t bds_k,
+                     const uint8_t *sk_seed, const uint8_t *seed,
+                     xmss_adrs_t *adrs);
+
 #endif /* XMSS_BDS_H */

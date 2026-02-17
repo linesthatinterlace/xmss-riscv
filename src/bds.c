@@ -125,13 +125,13 @@ void bds_treehash_init(const xmss_params *p, uint8_t *root,
     uint32_t stack_levels[XMSS_MAX_H + 1];
     uint32_t stack_offset = 0;
 
-    uint32_t lastnode = (uint32_t)1 << p->h;
+    uint32_t lastnode = (uint32_t)1 << p->tree_height;
     uint32_t idx, i;
     uint32_t nodeh;
     xmss_adrs_t a;
 
     /* Initialise treehash instances as completed */
-    for (i = 0; i < p->h - bds_k; i++) {
+    for (i = 0; i < p->tree_height - bds_k; i++) {
         state->treehash[i].h = i;
         state->treehash[i].completed = 1;
         state->treehash[i].stack_usage = 0;
@@ -156,14 +156,14 @@ void bds_treehash_init(const xmss_params *p, uint8_t *root,
             /* Capture auth path: first right sibling at each height */
             if ((i >> nodeh) == 1) {
                 memcpy(state->auth[nodeh], stack[stack_offset - 1], p->n);
-            } else if (nodeh < p->h - bds_k && (i >> nodeh) == 3) {
+            } else if (nodeh < p->tree_height - bds_k && (i >> nodeh) == 3) {
                 /* Capture treehash starting node */
                 memcpy(state->treehash[nodeh].node,
                        stack[stack_offset - 1], p->n);
-            } else if (nodeh >= p->h - bds_k) {
+            } else if (nodeh >= p->tree_height - bds_k) {
                 /* Capture retain node */
-                uint32_t off = ((uint32_t)1 << (p->h - 1 - nodeh))
-                             + nodeh - p->h;
+                uint32_t off = ((uint32_t)1 << (p->tree_height - 1 - nodeh))
+                             + nodeh - p->tree_height;
                 uint32_t row = ((i >> nodeh) - 3) >> 1;
                 memcpy(state->retain[off + row],
                        stack[stack_offset - 1], p->n);
@@ -200,8 +200,8 @@ void bds_round(const xmss_params *p, xmss_bds_state *state,
     xmss_adrs_t a;
 
     /* Find tau: lowest bit position where leaf_idx has a 0 */
-    tau = p->h;
-    for (i = 0; i < p->h; i++) {
+    tau = p->tree_height;
+    for (i = 0; i < p->tree_height; i++) {
         if (!((leaf_idx >> i) & 1)) {
             tau = i;
             break;
@@ -215,7 +215,7 @@ void bds_round(const xmss_params *p, xmss_bds_state *state,
     }
 
     /* Possibly save current auth[tau] to keep for future use */
-    if (!((leaf_idx >> (tau + 1)) & 1) && tau < p->h - 1) {
+    if (!((leaf_idx >> (tau + 1)) & 1) && tau < p->tree_height - 1) {
         memcpy(state->keep[tau >> 1], state->auth[tau], p->n);
     }
 
@@ -233,19 +233,19 @@ void bds_round(const xmss_params *p, xmss_bds_state *state,
 
         /* Fill auth[0..tau-1] from treehash nodes or retain */
         for (i = 0; i < tau; i++) {
-            if (i < p->h - bds_k) {
+            if (i < p->tree_height - bds_k) {
                 memcpy(state->auth[i], state->treehash[i].node, p->n);
             } else {
-                uint32_t off = ((uint32_t)1 << (p->h - 1 - i)) + i - p->h;
+                uint32_t off = ((uint32_t)1 << (p->tree_height - 1 - i)) + i - p->tree_height;
                 uint32_t row = ((leaf_idx >> i) - 1) >> 1;
                 memcpy(state->auth[i], state->retain[off + row], p->n);
             }
         }
 
         /* Reinitialise treehash instances for levels below tau */
-        for (i = 0; i < tau && i < p->h - bds_k; i++) {
+        for (i = 0; i < tau && i < p->tree_height - bds_k; i++) {
             uint32_t startidx = leaf_idx + 1 + 3 * ((uint32_t)1 << i);
-            if (startidx < (uint32_t)1 << p->h) {
+            if (startidx < (uint32_t)1 << p->tree_height) {
                 state->treehash[i].h = i;
                 state->treehash[i].next_idx = startidx;
                 state->treehash[i].completed = 0;
@@ -267,13 +267,13 @@ void bds_treehash_update(const xmss_params *p, xmss_bds_state *state,
     uint32_t level, l_min, low;
 
     for (j = 0; j < updates; j++) {
-        l_min = p->h;
-        level = p->h - bds_k;
+        l_min = p->tree_height;
+        level = p->tree_height - bds_k;
 
         /* Find the treehash instance with lowest priority (most urgent) */
-        for (i = 0; i < p->h - bds_k; i++) {
+        for (i = 0; i < p->tree_height - bds_k; i++) {
             if (state->treehash[i].completed) {
-                low = p->h;
+                low = p->tree_height;
             } else if (state->treehash[i].stack_usage == 0) {
                 low = i;
             } else {
@@ -286,11 +286,87 @@ void bds_treehash_update(const xmss_params *p, xmss_bds_state *state,
         }
 
         /* No incomplete instance found */
-        if (level == p->h - bds_k) {
+        if (level == p->tree_height - bds_k) {
             break;
         }
 
         treehash_update_one(p, &state->treehash[level], state,
                             sk_seed, seed, adrs);
     }
+}
+
+/* ====================================================================
+ * bds_state_update() - Process one leaf for incremental tree building
+ *
+ * Used by XMSS-MT to incrementally build "next" trees during signing.
+ * Each call generates one leaf (at index state->next_leaf) and merges
+ * it onto the BDS state's own stack, capturing auth/treehash/retain
+ * nodes along the way.  After 2^tree_height calls, the tree is fully
+ * built and the root sits in state->stack[0].
+ *
+ * Returns 0 on success, -1 if the tree is already complete.
+ * ==================================================================== */
+int bds_state_update(const xmss_params *p, xmss_bds_state *state,
+                     uint32_t bds_k,
+                     const uint8_t *sk_seed, const uint8_t *seed,
+                     xmss_adrs_t *adrs)
+{
+    uint32_t idx = state->next_leaf;
+    uint32_t nodeh;
+    xmss_adrs_t a;
+
+    if (idx >= (uint32_t)1 << p->tree_height) {
+        return -1;
+    }
+
+    /* Generate leaf onto stack top */
+    gen_leaf(p, state->stack[state->stack_offset], sk_seed, seed, idx, adrs);
+    state->stack_levels[state->stack_offset] = 0;
+    state->stack_offset++;
+
+    /* Special case: capture treehash[0] starting node at idx=3 */
+    if (p->tree_height > bds_k && idx == 3) {
+        memcpy(state->treehash[0].node,
+               state->stack[state->stack_offset - 1], p->n);
+    }
+
+    /* Merge while top two stack entries have equal height */
+    while (state->stack_offset > 1 &&
+           state->stack_levels[state->stack_offset - 1] ==
+           state->stack_levels[state->stack_offset - 2]) {
+        nodeh = state->stack_levels[state->stack_offset - 1];
+
+        /* Capture BDS state nodes */
+        if ((idx >> nodeh) == 1) {
+            /* Auth path node */
+            memcpy(state->auth[nodeh],
+                   state->stack[state->stack_offset - 1], p->n);
+        } else if (nodeh < p->tree_height - bds_k && (idx >> nodeh) == 3) {
+            /* Treehash starting node */
+            memcpy(state->treehash[nodeh].node,
+                   state->stack[state->stack_offset - 1], p->n);
+        } else if (nodeh >= p->tree_height - bds_k) {
+            /* Retain node */
+            uint32_t off = ((uint32_t)1 << (p->tree_height - 1 - nodeh))
+                         + nodeh - p->tree_height;
+            uint32_t row = ((idx >> nodeh) - 3) >> 1;
+            memcpy(state->retain[off + row],
+                   state->stack[state->stack_offset - 1], p->n);
+        }
+
+        /* Merge: H(left, right) -> left slot */
+        a = *adrs;
+        xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_HASH);
+        xmss_adrs_set_tree_height(&a, nodeh);
+        xmss_adrs_set_tree_index(&a, idx >> (nodeh + 1));
+
+        xmss_H(p, state->stack[state->stack_offset - 2], seed, &a,
+                state->stack[state->stack_offset - 2],
+                state->stack[state->stack_offset - 1]);
+        state->stack_levels[state->stack_offset - 2]++;
+        state->stack_offset--;
+    }
+
+    state->next_leaf++;
+    return 0;
 }

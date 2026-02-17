@@ -131,7 +131,7 @@ void compute_root(const xmss_params *p, uint8_t *root,
 
     memcpy(buf, leaf, p->n);
 
-    for (h = 0; h < p->h; h++) {
+    for (h = 0; h < p->tree_height; h++) {
         a = *adrs;
         xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_HASH);
         xmss_adrs_set_tree_height(&a, h);
@@ -167,7 +167,7 @@ void treehash_auth_path(const xmss_params *p, uint8_t *auth,
 {
     uint32_t h;
 
-    for (h = 0; h < p->h; h++) {
+    for (h = 0; h < p->tree_height; h++) {
         /* Sibling node index at level h */
         uint32_t sibling = ((idx >> h) ^ 1) << h;
         uint32_t subtree_size = (uint32_t)1 << h; /* 2^h leaves */

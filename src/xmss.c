@@ -66,7 +66,7 @@ int xmss_keygen_naive(const xmss_params *p, uint8_t *pk, uint8_t *sk,
     treehash(p, root,
              seeds,           /* SK_SEED */
              seeds + 2*p->n,  /* SEED */
-             0, (uint32_t)1 << p->h,
+             0, (uint32_t)1 << p->tree_height,
              &adrs);
 
     /* Serialise PK: OID(4) | root(n) | SEED(n) */
@@ -227,7 +227,7 @@ int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
     int ret;
 
     /* Validate bds_k */
-    if ((bds_k & 1) || bds_k > p->h) {
+    if ((bds_k & 1) || bds_k > p->tree_height) {
         return XMSS_ERR_PARAMS;
     }
 
@@ -319,7 +319,7 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
     {
         uint32_t i;
         uint8_t *auth_out = sig + p->idx_bytes + p->n + p->len * p->n;
-        for (i = 0; i < p->h; i++) {
+        for (i = 0; i < p->tree_height; i++) {
             memcpy(auth_out + i * p->n, state->auth[i], p->n);
         }
     }
@@ -332,8 +332,8 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
     bds_round(p, state, bds_k, (uint32_t)idx, sk_seed, pub_seed, &adrs);
 
     /* Run treehash updates: (h - bds_k) / 2 updates per signature */
-    if (p->h > bds_k) {
-        bds_treehash_update(p, state, bds_k, (p->h - bds_k) / 2,
+    if (p->tree_height > bds_k) {
+        bds_treehash_update(p, state, bds_k, (p->tree_height - bds_k) / 2,
                             sk_seed, pub_seed, &adrs);
     }
 

@@ -23,8 +23,10 @@ test: all
 	ctest --test-dir $(BUILD) --output-on-failure
 
 # Build + run only fast tests (no tree operations)
+# Includes: test_params, test_address, test_hash, test_wots, test_xmssmt_params
+# Excludes: test_xmss, test_kat, test_bds, test_bds_serial, test_xmssmt
 test-fast: all
-	ctest --test-dir $(BUILD) --output-on-failure -E '(test_xmss|test_kat|test_bds)'
+	ctest --test-dir $(BUILD) --output-on-failure -R '(test_params|test_address|test_hash|test_wots|test_xmssmt_params)'
 
 # RISC-V cross-compile
 rv:
