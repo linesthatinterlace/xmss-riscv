@@ -1,5 +1,5 @@
 /**
- * xmssmt.c - XMSS-MT (Multi-Tree) key generation, signing, verification
+ * xmss_mt.c - XMSS-MT (Multi-Tree) key generation, signing, verification
  *
  * RFC 8391 §4.2, Algorithms 15, 16, 17.
  *
@@ -37,11 +37,11 @@ static void deep_state_swap(xmss_bds_state *a, xmss_bds_state *b)
 }
 
 /* ====================================================================
- * xmssmt_keygen() - Algorithm 15: XMSS-MT Key Generation
+ * xmss_mt_keygen() - Algorithm 15: XMSS-MT Key Generation
  * ==================================================================== */
 
-int xmssmt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
-                  xmssmt_state *state, uint32_t bds_k,
+int xmss_mt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                  xmss_mt_state *state, uint32_t bds_k,
                   xmss_randombytes_fn randombytes)
 {
     uint8_t  root[XMSS_MAX_N];
@@ -125,12 +125,12 @@ int xmssmt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
 }
 
 /* ====================================================================
- * xmssmt_sign() - Algorithm 16: XMSS-MT Signature Generation
+ * xmss_mt_sign() - Algorithm 16: XMSS-MT Signature Generation
  * ==================================================================== */
 
-int xmssmt_sign(const xmss_params *p, uint8_t *sig,
+int xmss_mt_sign(const xmss_params *p, uint8_t *sig,
                 const uint8_t *msg, size_t msglen,
-                uint8_t *sk, xmssmt_state *state, uint32_t bds_k)
+                uint8_t *sk, xmss_mt_state *state, uint32_t bds_k)
 {
     uint64_t idx;
     uint64_t idx_tree;
@@ -289,10 +289,10 @@ int xmssmt_sign(const xmss_params *p, uint8_t *sig,
 }
 
 /* ====================================================================
- * xmssmt_verify() - Algorithm 17: XMSS-MT Signature Verification
+ * xmss_mt_verify() - Algorithm 17: XMSS-MT Signature Verification
  * ==================================================================== */
 
-int xmssmt_verify(const xmss_params *p,
+int xmss_mt_verify(const xmss_params *p,
                   const uint8_t *msg, size_t msglen,
                   const uint8_t *sig, const uint8_t *pk)
 {
