@@ -113,10 +113,9 @@ These are enforced and must not be broken by any change:
 
 ## Known limitations / future work
 
-- **Auth path**: Two implementations available:
-  - **Naive** (`xmss_sign`): O(h·2^h) per signature — recomputes the full sibling subtree. Impractical for h≥16.
-  - **BDS** (`xmss_sign_bds`): O(h/2) leaf computations per signature. Requires a caller-managed `xmss_bds_state` initialised by `xmss_keygen_bds()`. SK stays RFC-compatible; BDS state is separate.
+- **Auth path**: The default `xmss_keygen()`/`xmss_sign()` use BDS-accelerated O(h/2) auth path. Requires a caller-managed `xmss_bds_state`. SK stays RFC-compatible; BDS state is separate.
   - BDS `bds_k` parameter (0, 2, or 4): trades retain storage for fewer treehash updates. Default 0 is simplest.
+  - Naive O(h·2^h) implementations are available as `xmss_keygen_naive()`/`xmss_sign_naive()` when `XMSS_NAIVE_AUTH_PATH` is defined. Impractical for h≥16.
 - **XMSS-MT**: deferred. The layer/tree address fields and `d` parameter are already in `xmss_params` and `xmss_adrs_t`.
 - **xmss_sign exhaustion**: returns `XMSS_ERR_EXHAUSTED` when `idx > idx_max`, but there is no separate "remaining uses" query function yet.
 

@@ -41,11 +41,13 @@ static uint32_t pk_off_root(const xmss_params *p) { (void)p; return 4; }
 static uint32_t pk_off_seed(const xmss_params *p) { return 4 + p->n; }
 
 /* ====================================================================
- * xmss_keygen() - Algorithm 10
+ * Naive keygen/sign — gated behind XMSS_NAIVE_AUTH_PATH
  * ==================================================================== */
 
-int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
-                xmss_randombytes_fn randombytes)
+#ifdef XMSS_NAIVE_AUTH_PATH
+
+int xmss_keygen_naive(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                      xmss_randombytes_fn randombytes)
 {
     uint8_t  root[XMSS_MAX_N];
     uint8_t  seeds[3 * XMSS_MAX_N]; /* SK_SEED || SK_PRF || SEED */
@@ -84,13 +86,9 @@ int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
     return XMSS_OK;
 }
 
-/* ====================================================================
- * xmss_sign() - Algorithm 11
- * ==================================================================== */
-
-int xmss_sign(const xmss_params *p, uint8_t *sig,
-              const uint8_t *msg, size_t msglen,
-              uint8_t *sk)
+int xmss_sign_naive(const xmss_params *p, uint8_t *sig,
+                    const uint8_t *msg, size_t msglen,
+                    uint8_t *sk)
 {
     uint64_t idx;
     uint8_t  r[XMSS_MAX_N];
@@ -113,10 +111,7 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
     /* Increment index in SK immediately (RFC 8391 §4.1.9 note) */
     ull_to_bytes(sk + sk_off_idx(p), p->idx_bytes, idx + 1);
 
-    /* r = PRF(SK_PRF, toByte(idx, 32))
-     * RFC 8391 §4.1.9: r is computed using the PRF with the raw index
-     * as the 32-byte message input (not via ADRS structure).
-     */
+    /* r = PRF(SK_PRF, toByte(idx, 32)) */
     xmss_PRF_idx(p, r, sk_prf, idx);
 
     /* m_hash = H_msg(r, root, idx, msg) */
@@ -150,6 +145,8 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
 
     return XMSS_OK;
 }
+
+#endif /* XMSS_NAIVE_AUTH_PATH */
 
 /* ====================================================================
  * xmss_verify() - Algorithm 14
@@ -217,10 +214,10 @@ int xmss_verify(const xmss_params *p,
 }
 
 /* ====================================================================
- * xmss_keygen_bds() - BDS-accelerated key generation
+ * xmss_keygen() - BDS-accelerated key generation (Algorithm 10 + BDS)
  * ==================================================================== */
 
-int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
                     xmss_bds_state *state, uint32_t bds_k,
                     xmss_randombytes_fn randombytes)
 {
@@ -269,10 +266,10 @@ int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
 }
 
 /* ====================================================================
- * xmss_sign_bds() - BDS-accelerated signing
+ * xmss_sign() - BDS-accelerated signing (Algorithm 11 + BDS)
  * ==================================================================== */
 
-int xmss_sign_bds(const xmss_params *p, uint8_t *sig,
+int xmss_sign(const xmss_params *p, uint8_t *sig,
                   const uint8_t *msg, size_t msglen,
                   uint8_t *sk, xmss_bds_state *state, uint32_t bds_k)
 {

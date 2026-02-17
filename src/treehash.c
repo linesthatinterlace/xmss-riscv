@@ -5,8 +5,7 @@
  * Uses a stack-based iterative algorithm; no recursion (J4).
  * No malloc; stack-only (J3).
  *
- * Phase 1: naive O(h * 2^h) auth path via repeated treehash calls.
- * Phase 7 (future): replace with BDS algorithm.
+ * Also contains naive O(h * 2^h) auth path (gated behind XMSS_NAIVE_AUTH_PATH).
  */
 #include <string.h>
 #include <stdint.h>
@@ -152,6 +151,8 @@ void compute_root(const xmss_params *p, uint8_t *root,
     memcpy(root, buf, p->n);
 }
 
+#ifdef XMSS_NAIVE_AUTH_PATH
+
 /* ====================================================================
  * treehash_auth_path() - Naive auth path computation
  *
@@ -191,3 +192,5 @@ void treehash_auth_path(const xmss_params *p, uint8_t *auth,
         }
     }
 }
+
+#endif /* XMSS_NAIVE_AUTH_PATH */

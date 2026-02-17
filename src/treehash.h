@@ -44,10 +44,11 @@ void compute_root(const xmss_params *p, uint8_t *root,
                   const uint8_t *auth,
                   const uint8_t *seed, xmss_adrs_t *adrs);
 
+#ifdef XMSS_NAIVE_AUTH_PATH
 /**
  * treehash_auth_path() - Compute auth path for leaf at index idx.
  *
- * Naive O(h * 2^h) implementation for Phase 1.
+ * Naive O(h * 2^h) implementation.
  * For each level i, computes the sibling node of the node on the
  * path from leaf idx to the root.
  *
@@ -61,5 +62,6 @@ void compute_root(const xmss_params *p, uint8_t *root,
 void treehash_auth_path(const xmss_params *p, uint8_t *auth,
                         const uint8_t *sk_seed, const uint8_t *seed,
                         uint32_t idx, xmss_adrs_t *adrs);
+#endif /* XMSS_NAIVE_AUTH_PATH */
 
 #endif /* XMSS_TREEHASH_H */

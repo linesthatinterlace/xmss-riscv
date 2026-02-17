@@ -42,46 +42,6 @@
 typedef int (*xmss_randombytes_fn)(uint8_t *buf, size_t len);
 
 /**
- * xmss_keygen() - Generate an XMSS key pair.
- *
- * @p:           Pointer to populated xmss_params (from xmss_params_from_oid).
- * @pk:          Output public key  (p->pk_bytes bytes).
- * @sk:          Output secret key  (p->sk_bytes bytes).
- * @randombytes: Caller-supplied entropy function.
- *
- * Returns XMSS_OK on success.
- *
- * SK layout (RFC 8391 §4.1.3, Errata 7900):
- *   OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)
- * PK layout:
- *   OID(4) | root(n) | SEED(n)
- */
-int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
-                xmss_randombytes_fn randombytes);
-
-/**
- * xmss_sign() - Sign a message.
- *
- * @p:    Parameter set.
- * @sig:  Output signature (p->sig_bytes bytes).
- * @msg:  Message to sign.
- * @msglen: Message length in bytes.
- * @sk:   Secret key (p->sk_bytes bytes); leaf index is incremented in place.
- *
- * Returns XMSS_OK on success, XMSS_ERR_EXHAUSTED if key index is already at
- * maximum.
- *
- * The leaf index in sk is incremented BEFORE returning to the caller.
- * Callers must persist the updated sk immediately to prevent index reuse.
- *
- * Signature layout (RFC 8391 §4.1.8):
- *   idx(idx_bytes) | r(n) | sig_WOTS(len*n) | auth(h*n)
- */
-int xmss_sign(const xmss_params *p, uint8_t *sig,
-              const uint8_t *msg, size_t msglen,
-              uint8_t *sk);
-
-/**
  * xmss_verify() - Verify an XMSS signature.
  *
  * @p:      Parameter set.
@@ -98,7 +58,7 @@ int xmss_verify(const xmss_params *p,
                 const uint8_t *sig, const uint8_t *pk);
 
 /* ====================================================================
- * BDS-accelerated API
+ * BDS state types
  *
  * BDS amortises auth path computation: signing is O(h) leaf computations
  * instead of O(h * 2^h).  The BDS state is a separate caller-managed
@@ -119,7 +79,7 @@ typedef struct {
  *
  * Fixed-size, no pointers, no malloc (J1/J3).  Allocated by the caller
  * on the stack or as a static/global.  Must be initialised by
- * xmss_keygen_bds() and updated by each xmss_sign_bds() call.
+ * xmss_keygen() and updated by each xmss_sign() call.
  */
 typedef struct xmss_bds_state {
     /* Auth path for current leaf: h nodes of n bytes */
@@ -146,10 +106,10 @@ typedef struct xmss_bds_state {
 } xmss_bds_state;
 
 /**
- * xmss_keygen_bds() - Generate an XMSS key pair with BDS state.
+ * xmss_keygen() - Generate an XMSS key pair with BDS state.
  *
- * Same as xmss_keygen() but also initialises the BDS state for
- * subsequent BDS-accelerated signing.
+ * Generates an XMSS key pair and initialises the BDS state for
+ * BDS-accelerated signing.
  *
  * @p:           Parameter set.
  * @pk:          Output public key (p->pk_bytes bytes).
@@ -159,16 +119,20 @@ typedef struct xmss_bds_state {
  * @randombytes: Caller-supplied entropy function.
  *
  * Returns XMSS_OK on success, XMSS_ERR_PARAMS if bds_k is invalid.
+ *
+ * SK layout (RFC 8391 §4.1.3, Errata 7900):
+ *   OID(4) | idx(idx_bytes) | SK_SEED(n) | SK_PRF(n) | root(n) | SEED(n)
+ * PK layout:
+ *   OID(4) | root(n) | SEED(n)
  */
-int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
-                    xmss_bds_state *state, uint32_t bds_k,
-                    xmss_randombytes_fn randombytes);
+int xmss_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                xmss_bds_state *state, uint32_t bds_k,
+                xmss_randombytes_fn randombytes);
 
 /**
- * xmss_sign_bds() - Sign a message using BDS-accelerated auth path.
+ * xmss_sign() - Sign a message using BDS-accelerated auth path.
  *
- * Same as xmss_sign() but uses and updates the BDS state instead of
- * recomputing the auth path from scratch.  O(h) leaf computations per
+ * Uses and updates the BDS state for O(h) leaf computations per
  * signature instead of O(h * 2^h).
  *
  * @p:      Parameter set.
@@ -177,12 +141,41 @@ int xmss_keygen_bds(const xmss_params *p, uint8_t *pk, uint8_t *sk,
  * @msglen: Message length in bytes.
  * @sk:     Secret key (p->sk_bytes bytes); leaf index incremented in place.
  * @state:  BDS state (updated in place).
- * @bds_k:  Retain parameter (same value used in keygen_bds).
+ * @bds_k:  Retain parameter (same value used in xmss_keygen).
  *
  * Returns XMSS_OK on success, XMSS_ERR_EXHAUSTED if key index exhausted.
+ *
+ * The leaf index in sk is incremented BEFORE returning to the caller.
+ * Callers must persist the updated sk immediately to prevent index reuse.
+ *
+ * Signature layout (RFC 8391 §4.1.8):
+ *   idx(idx_bytes) | r(n) | sig_WOTS(len*n) | auth(h*n)
  */
-int xmss_sign_bds(const xmss_params *p, uint8_t *sig,
-                  const uint8_t *msg, size_t msglen,
-                  uint8_t *sk, xmss_bds_state *state, uint32_t bds_k);
+int xmss_sign(const xmss_params *p, uint8_t *sig,
+              const uint8_t *msg, size_t msglen,
+              uint8_t *sk, xmss_bds_state *state, uint32_t bds_k);
+
+/* ====================================================================
+ * Naive API (gated behind XMSS_NAIVE_AUTH_PATH)
+ *
+ * These use O(h * 2^h) auth path computation per signature.
+ * Only available when XMSS_NAIVE_AUTH_PATH is defined.
+ * ==================================================================== */
+#ifdef XMSS_NAIVE_AUTH_PATH
+
+/**
+ * xmss_keygen_naive() - Generate an XMSS key pair (no BDS state).
+ */
+int xmss_keygen_naive(const xmss_params *p, uint8_t *pk, uint8_t *sk,
+                      xmss_randombytes_fn randombytes);
+
+/**
+ * xmss_sign_naive() - Sign a message with naive auth path (O(h * 2^h)).
+ */
+int xmss_sign_naive(const xmss_params *p, uint8_t *sig,
+                    const uint8_t *msg, size_t msglen,
+                    uint8_t *sk);
+
+#endif /* XMSS_NAIVE_AUTH_PATH */
 
 #endif /* XMSS_H */

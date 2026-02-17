@@ -49,7 +49,7 @@ static int test_one_set(uint32_t oid, const char *name)
     test_rng_reset(0x1234567890ABCDEFULL);
 
     /* Keygen */
-    ret = xmss_keygen_bds(&p, pk, sk, state, 0, test_randombytes);
+    ret = xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
     {
         char tname[64];
         snprintf(tname, sizeof(tname), "%s keygen returns XMSS_OK", name);
@@ -58,7 +58,7 @@ static int test_one_set(uint32_t oid, const char *name)
     if (ret != XMSS_OK) { goto done; }
 
     /* Sign */
-    ret = xmss_sign_bds(&p, sig, (const uint8_t *)msg, msglen, sk, state, 0);
+    ret = xmss_sign(&p, sig, (const uint8_t *)msg, msglen, sk, state, 0);
     {
         char tname[64];
         snprintf(tname, sizeof(tname), "%s sign returns XMSS_OK", name);
@@ -130,7 +130,7 @@ static void test_sequential(uint32_t oid, const char *name)
     state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
 
     test_rng_reset(99);
-    xmss_keygen_bds(&p, pk, sk, state, 0, test_randombytes);
+    xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
 
     for (i = 0; i < 20; i++) {
         uint8_t msg[4];
@@ -139,7 +139,7 @@ static void test_sequential(uint32_t oid, const char *name)
         msg[2] = (uint8_t)(i * 3);
         msg[3] = (uint8_t)(i ^ 0x55);
 
-        rc = xmss_sign_bds(&p, sig, msg, sizeof(msg), sk, state, 0);
+        rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state, 0);
         if (rc != XMSS_OK) {
             snprintf(label, sizeof(label), "%s: seq sign idx=%d", name, i);
             TEST(label, 0);

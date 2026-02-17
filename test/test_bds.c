@@ -31,14 +31,14 @@ static void test_bds_k_validation(void)
     sk    = (uint8_t *)malloc(p.sk_bytes);
     state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
 
-    rc = xmss_keygen_bds(&p, pk, sk, state, 1, test_randombytes);
+    rc = xmss_keygen(&p, pk, sk, state, 1, test_randombytes);
     TEST("bds_k=1 (odd) rejected", rc == XMSS_ERR_PARAMS);
 
-    rc = xmss_keygen_bds(&p, pk, sk, state, 12, test_randombytes);
+    rc = xmss_keygen(&p, pk, sk, state, 12, test_randombytes);
     TEST("bds_k=12 (>h) rejected", rc == XMSS_ERR_PARAMS);
 
     test_rng_reset(1);
-    rc = xmss_keygen_bds(&p, pk, sk, state, 0, test_randombytes);
+    rc = xmss_keygen(&p, pk, sk, state, 0, test_randombytes);
     TEST("bds_k=0 accepted", rc == XMSS_OK);
 
     free(pk); free(sk); free(state);
@@ -65,11 +65,11 @@ static void test_roundtrip_k(uint32_t oid, const char *name, uint32_t bds_k)
 
     test_rng_reset(42);
 
-    rc = xmss_keygen_bds(&p, pk, sk, state, bds_k, test_randombytes);
+    rc = xmss_keygen(&p, pk, sk, state, bds_k, test_randombytes);
     snprintf(label, sizeof(label), "%s (k=%u): keygen", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
-    rc = xmss_sign_bds(&p, sig, msg, sizeof(msg), sk, state, bds_k);
+    rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state, bds_k);
     snprintf(label, sizeof(label), "%s (k=%u): sign", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
@@ -99,7 +99,7 @@ static void test_sequential_k(uint32_t oid, const char *name, uint32_t bds_k)
     state = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
 
     test_rng_reset(99);
-    xmss_keygen_bds(&p, pk, sk, state, bds_k, test_randombytes);
+    xmss_keygen(&p, pk, sk, state, bds_k, test_randombytes);
 
     for (i = 0; i < 20; i++) {
         uint8_t msg[4];
@@ -108,7 +108,7 @@ static void test_sequential_k(uint32_t oid, const char *name, uint32_t bds_k)
         msg[2] = (uint8_t)(i * 3);
         msg[3] = (uint8_t)(i ^ 0x55);
 
-        rc = xmss_sign_bds(&p, sig, msg, sizeof(msg), sk, state, bds_k);
+        rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state, bds_k);
         if (rc != XMSS_OK) {
             snprintf(label, sizeof(label), "%s (k=%u): seq sign idx=%d", name, bds_k, i);
             TEST(label, 0);
