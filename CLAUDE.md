@@ -119,3 +119,12 @@ These are enforced and must not be broken by any change:
 ## Dependencies
 
 None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/` (PQClean SHA-2 and fips202) is vendored for reference but **not used** in the build — the library uses its own stack-based implementations in `src/hash/sha2_local.c` and `src/hash/shake_local.c`.
+
+## Comments
+Some comments for reviewing models:
+
+- SHA-2 domain separation in xmss_hash.c — the bitmask XOR construction for F and H is the most complex and RFC-sensitive part. Worth scrutinising carefully against RFC 8391 §5.1.
+- xmss_PRF_idx — this is a slight departure from the ADRS-based PRF interface (it takes a raw uint64_t index). The review should confirm it matches the RFC's PRF(SK_PRF, toByte(idx, 32)) exactly. (User comment: probably need to fix
+this and make it match the spec...)
+- Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)) and isn't subtle code, but the indexing logic for sibling nodes is worth a second look. (User note: is this acceptably slow? Is this avoidable?)
+- test_xmss.c uses malloc — the integration test allocates pk/sk/sig on the heap for convenience, which is fine for test code but worth noting is not representative of the library itself.
