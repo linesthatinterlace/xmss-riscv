@@ -124,12 +124,3 @@ These are enforced and must not be broken by any change:
 None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/` contents:
 - `sha2/`, `fips202/` — PQClean vendored sources, not used in the build (we use `src/hash/sha2_local.c` and `src/hash/shake_local.c`).
 - `xmss-reference/` — git submodule of [XMSS/xmss-reference](https://github.com/XMSS/xmss-reference). **Read-only reference**: used to regenerate KAT fingerprints and as an algorithmic reference (especially for BDS in `xmss_core_fast.c`). **Do NOT copy code from it** — our implementation must follow Jasmin portability rules (no VLAs, no malloc, no function pointers, etc.) which the reference violates. Only read it to understand algorithm logic, then reimplement from scratch.
-
-## Comments
-Some comments for reviewing models:
-
-- Claude Sonnet 4.5 comment: SHA-2 domain separation in xmss_hash.c — the bitmask XOR construction for F and H is the most complex and RFC-sensitive part. Worth scrutinising carefully against RFC 8391 §5.1.
-- Claude Sonnet 4.5 comment: xmss_PRF_idx — this is a slight departure from the ADRS-based PRF interface (it takes a raw uint64_t index). The review should confirm it matches the RFC's PRF(SK_PRF, toByte(idx, 32)) exactly. (User comment: probably need to fix
-this and make it match the spec...)
-- Claude Sonnet 4.5 comment: Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)). (Resolved: BDS implementation in src/bds.c replaces it for practical use.)
-- Claude Sonnet 4.5 comment: test_xmss.c uses malloc — the integration test allocates pk/sk/sig on the heap for convenience, which is fine for test code but worth noting is not representative of the library itself.
