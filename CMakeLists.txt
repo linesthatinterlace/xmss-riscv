@@ -12,6 +12,7 @@ add_compile_options(
     -Wpedantic
     -Wvla
     -Wmissing-prototypes
+    -Wstrict-prototypes
     -Wshadow
 )
 
@@ -22,16 +23,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_link_options(-fsanitize=address,undefined)
     endif()
 endif()
-
-# -----------------------------------------------------------------------
-# Include paths
-# -----------------------------------------------------------------------
-include_directories(
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/hash
-)
 
 # -----------------------------------------------------------------------
 # XMSS library

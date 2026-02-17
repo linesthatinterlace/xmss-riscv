@@ -9,7 +9,7 @@ A top-level `Makefile` wraps CMake for convenience:
 ```bash
 make            # Release build
 make test       # Build + run all tests (~2 min)
-make test-fast  # Build + run only fast tests (params, address, hash, wots, xmssmt_params)
+make test-fast  # Build + run only fast tests (CTest label "fast")
 make debug      # Debug build (ASan + UBSan — very slow for crypto tests)
 make rv         # RISC-V cross-compile
 make clean      # Remove all build directories
@@ -74,7 +74,7 @@ XMSS-MT Sig: idx(idx_bytes) | r(n) | d × [sig_WOTS(len*n) | auth(tree_height*n)
 ```
 
 SK/PK layout is the same for XMSS and XMSS-MT (only idx_bytes differs).
-Offset helpers are static functions at the top of `src/xmss.c` and `src/xmssmt.c`.
+Offset helpers are shared `static inline` functions in `src/sk_offsets.h`, included by both `xmss.c` and `xmssmt.c`.
 
 ### SHA-2 domain separation (RFC 8391 §5.1)
 
@@ -116,6 +116,7 @@ These are enforced and must not be broken by any change:
 | `test_bds_serial` | BDS serialization: round-trip after keygen, mid-signing, byte-exact, size consistency, multiple param sets, bds_k=2 |
 | `test_xmssmt_params` | All 32 XMSS-MT OIDs: n, w, h, d, tree_height, len, sig_bytes, pk_bytes, sk_bytes, idx_bytes; RFC and internal OID lookup |
 | `test_xmssmt` | XMSS-MT keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; sequential signing (5 sigs); tree boundary crossing (1024+ sigs) |
+| `test_utils_internal` | ct_memcmp, ull_to_bytes, bytes_to_ull, xmss_memzero, xmss_PRF_idx, key exhaustion |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 

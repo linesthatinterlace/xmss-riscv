@@ -24,11 +24,28 @@ static int test_fail = 0;
     } \
 } while(0)
 
-#define TEST_BYTES(name, a, b, n) \
-    TEST(name, memcmp(a, b, n) == 0)
+#define TEST_BYTES(name, a, b, n) do { \
+    if (memcmp(a, b, n) == 0) { \
+        printf("  PASS: %s\n", name); \
+        test_pass++; \
+    } else { \
+        printf("  FAIL: %s\n", name); \
+        hex_print("    got", (const uint8_t *)(a), n); \
+        hex_print("    exp", (const uint8_t *)(b), n); \
+        test_fail++; \
+    } \
+} while(0)
 
-#define TEST_INT(name, a, b) \
-    TEST(name, (a) == (b))
+#define TEST_INT(name, a, b) do { \
+    long long test__a = (long long)(a), test__b = (long long)(b); \
+    if (test__a == test__b) { \
+        printf("  PASS: %s\n", name); \
+        test_pass++; \
+    } else { \
+        printf("  FAIL: %s (got %lld, expected %lld)\n", name, test__a, test__b); \
+        test_fail++; \
+    } \
+} while(0)
 
 static inline int tests_done(void)
 {
