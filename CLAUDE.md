@@ -1,4 +1,4 @@
-# CLAUDE.md — xmss-riscv
+# CLAUDE.md — xmss-jasmin
 
 Context for Claude Code when working on this repository.
 

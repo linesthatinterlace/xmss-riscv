@@ -1,4 +1,4 @@
-# xmss-riscv
+# xmss-jasmin
 
 Complete RFC 8391 XMSS and XMSS-MT implementation in C99, targeting RISC-V 64-bit with a clear path to a [Jasmin](https://github.com/jasmin-lang/jasmin) port.
 
