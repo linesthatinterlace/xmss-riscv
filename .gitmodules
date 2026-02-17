@@ -1,0 +1,3 @@
+[submodule "/home/jr16959/claude/xmss_riscv/third_party/xmss-reference"]
+	path = /home/jr16959/claude/xmss_riscv/third_party/xmss-reference
+	url = https://github.com/XMSS/xmss-reference.git
