@@ -99,5 +99,51 @@ int main(void)
     TEST_INT("hash tree_height low byte", out[23], 3);
     TEST_INT("hash tree_index low byte", out[27], 12);
 
+    /* Test: max-value fields round-trip via serialisation.
+     * XMSS_ADRS_TYPE_OTS = 0, so word 3 stays 0x00000000.
+     * All other fields are set to 0xFFFFFFFF / 0xFFFFFFFFFFFFFFFF. */
+    memset(&a, 0, sizeof(a));
+    xmss_adrs_set_layer(&a, 0xFFFFFFFFU);
+    xmss_adrs_set_tree(&a, 0xFFFFFFFFFFFFFFFFULL);
+    xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
+    xmss_adrs_set_ots(&a, 0xFFFFFFFFU);
+    xmss_adrs_set_chain(&a, 0xFFFFFFFFU);
+    xmss_adrs_set_hash(&a, 0xFFFFFFFFU);
+    xmss_adrs_set_key_and_mask(&a, 0xFFFFFFFFU);
+    xmss_adrs_to_bytes(&a, out);
+    /* Bytes 0-3: layer = 0xFFFFFFFF */
+    TEST_INT("max-value: layer all-0xFF", out[0] & out[1] & out[2] & out[3], 0xFF);
+    /* Bytes 4-11: tree = 0xFFFFFFFFFFFFFFFF */
+    {
+        int tree_ff = 1;
+        size_t i;
+        for (i = 4; i < 12; i++) { if (out[i] != 0xFF) { tree_ff = 0; break; } }
+        TEST("max-value: tree all-0xFF", tree_ff);
+    }
+    /* Bytes 12-15: type = OTS = 0x00000000 */
+    TEST_INT("max-value: type word is OTS (0)", out[15], 0);
+    /* Bytes 16-31: w[4..7] = 0xFFFFFFFF each */
+    {
+        int data_ff = 1;
+        size_t i;
+        for (i = 16; i < 32; i++) { if (out[i] != 0xFF) { data_ff = 0; break; } }
+        TEST("max-value: OTS sub-fields all-0xFF", data_ff);
+    }
+
+    /* Test: repeated set_type() calls — each must zero words 4-7 */
+    memset(&a, 0, sizeof(a));
+    xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_OTS);
+    xmss_adrs_set_ots(&a, 99);
+    xmss_adrs_set_chain(&a, 3);
+    /* Call set_type again — must wipe the OTS fields set above */
+    xmss_adrs_set_type(&a, XMSS_ADRS_TYPE_LTREE);
+    TEST_INT("repeated set_type: w[4] zeroed", a.w[4], 0U);
+    TEST_INT("repeated set_type: w[5] zeroed", a.w[5], 0U);
+    TEST_INT("repeated set_type: w[6] zeroed", a.w[6], 0U);
+    TEST_INT("repeated set_type: w[7] zeroed", a.w[7], 0U);
+    /* Confirm new type is set correctly */
+    xmss_adrs_to_bytes(&a, out);
+    TEST_INT("repeated set_type: new type byte", out[15], 1); /* LTREE = 1 */
+
     return tests_done();
 }
