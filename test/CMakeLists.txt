@@ -45,3 +45,12 @@ target_include_directories(test_xmss PRIVATE
     ${CMAKE_SOURCE_DIR}/src
 )
 add_test(NAME test_xmss COMMAND test_xmss)
+
+# test_kat (KAT cross-validated against xmss-reference)
+add_executable(test_kat test_kat.c)
+target_link_libraries(test_kat xmss)
+target_include_directories(test_kat PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/src
+)
+add_test(NAME test_kat COMMAND test_kat)

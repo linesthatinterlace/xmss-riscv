@@ -59,7 +59,7 @@ These must be kept consistent with the OID table in `src/params.c`. If new param
 
 `xmss_adrs_t` is 8 × `uint32_t` stored big-endian. Always manipulate via the setters in `src/address.h`. **Never** write to `a.w[]` directly in algorithm code.
 
-`xmss_adrs_set_type()` zeros words 4–7 as required by RFC 8391 §2.7.3. This differs from xmss-reference which does not do this.
+`xmss_adrs_set_type()` zeros words 4–7 as required by RFC 8391 §2.5. This differs from xmss-reference which does not do this.
 
 ### SK/PK layout (Errata 7900)
 
@@ -106,14 +106,14 @@ These are enforced and must not be broken by any change:
 | `test_hash` | SHA-256, SHA-512 (FIPS 180-4 vectors), SHAKE-128, SHAKE-256 (NIST vectors), incremental API |
 | `test_wots` | sign→pkFromSig roundtrip (n=32 and n=64), wrong message detection |
 | `test_xmss` | keygen/sign/verify roundtrip; bit-flip and wrong-message rejection; idx increment |
+| `test_kat` | SHAKE128-fingerprint cross-validation against xmss-reference for 4 h=10 parameter sets |
 
 `test_utils.h` provides a deterministic RNG (`test_randombytes`) seeded with `test_rng_reset()` for reproducible test runs.
 
 ## Known limitations / future work
 
-- **Auth path**: naive O(h·2^h) — recomputes the full sibling subtree for each auth path node. Phase 7 (BDS algorithm) will replace this.
+- **Auth path**: naive O(h·2^h) — recomputes the full sibling subtree for each auth path node. Phase 7 (BDS algorithm) will replace this. The correct F/H construction (3 PRF calls per F, 4 per H) makes this ~3x slower than before — BDS is now critical for practical signing performance.
 - **XMSS-MT**: deferred. The layer/tree address fields and `d` parameter are already in `xmss_params` and `xmss_adrs_t`.
-- **RFC KAT vectors**: Phase 6 (file-driven KAT against RFC 8391 Appendix D) is not yet implemented.
 - **xmss_sign exhaustion**: returns `XMSS_ERR_EXHAUSTED` when `idx > idx_max`, but there is no separate "remaining uses" query function yet.
 
 ## Dependencies
@@ -123,8 +123,11 @@ None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/
 ## Comments
 Some comments for reviewing models:
 
-- SHA-2 domain separation in xmss_hash.c — the bitmask XOR construction for F and H is the most complex and RFC-sensitive part. Worth scrutinising carefully against RFC 8391 §5.1.
-- xmss_PRF_idx — this is a slight departure from the ADRS-based PRF interface (it takes a raw uint64_t index). The review should confirm it matches the RFC's PRF(SK_PRF, toByte(idx, 32)) exactly. (User comment: probably need to fix
+- User comment: all the RFC references seem off to me. For instance, RFC 8391 §2.7.3 simply doesn't
+exist but is referred to multiple times - I think this should be 2.5. This needs reviewing. The RFC is here:
+https://www.rfc-editor.org/rfc/rfc8391.txt. User can download manually if needed.
+- Claude Sonnet 4.5 comment: SHA-2 domain separation in xmss_hash.c — the bitmask XOR construction for F and H is the most complex and RFC-sensitive part. Worth scrutinising carefully against RFC 8391 §5.1.
+- Claude Sonnet 4.5 comment: xmss_PRF_idx — this is a slight departure from the ADRS-based PRF interface (it takes a raw uint64_t index). The review should confirm it matches the RFC's PRF(SK_PRF, toByte(idx, 32)) exactly. (User comment: probably need to fix
 this and make it match the spec...)
-- Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)) and isn't subtle code, but the indexing logic for sibling nodes is worth a second look. (User note: is this acceptably slow? Is this avoidable?)
-- test_xmss.c uses malloc — the integration test allocates pk/sk/sig on the heap for convenience, which is fine for test code but worth noting is not representative of the library itself.
+- Claude Sonnet 4.5 comment: Naive auth path — treehash_auth_path() is known-slow (O(h·2^h)) and isn't subtle code, but the indexing logic for sibling nodes is worth a second look. (User comment: is this acceptably slow? Is this avoidable?)
+- Claude Sonnet 4.5 comment: test_xmss.c uses malloc — the integration test allocates pk/sk/sig on the heap for convenience, which is fine for test code but worth noting is not representative of the library itself.
