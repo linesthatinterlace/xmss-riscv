@@ -24,48 +24,44 @@
 static void test_roundtrip_after_keygen(uint32_t oid, const char *name,
                                         uint32_t bds_k)
 {
-    xmss_params p;
-    xmss_bds_state *state, *state2;
-    uint8_t *pk, *sk, *sig, *buf;
+    xmss_test_ctx t;
+    xmss_bds_state *state2;
+    uint8_t *buf;
     uint8_t msg[] = { 0xDE, 0xAD, 0xBE, 0xEF };
     uint32_t sz;
     char label[128];
     int rc;
 
-    xmss_params_from_oid(&p, oid);
-    sz = xmss_bds_serialized_size(&p, bds_k);
-
-    pk     = (uint8_t *)malloc(p.pk_bytes);
-    sk     = (uint8_t *)malloc(p.sk_bytes);
-    sig    = (uint8_t *)malloc(p.sig_bytes);
-    state  = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&t, oid);
+    sz = xmss_bds_serialized_size(&t.p, bds_k);
     state2 = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
     buf    = (uint8_t *)malloc(sz);
 
     test_rng_reset(100);
-    rc = xmss_keygen(&p, pk, sk, state, bds_k, test_randombytes);
+    rc = xmss_keygen(&t.p, t.pk, t.sk, t.state, bds_k, test_randombytes);
     snprintf(label, sizeof(label), "%s (k=%u): keygen", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
     /* Serialize and deserialize */
-    rc = xmss_bds_serialize(&p, buf, state, bds_k);
+    rc = xmss_bds_serialize(&t.p, buf, t.state, bds_k);
     snprintf(label, sizeof(label), "%s (k=%u): serialize", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
-    rc = xmss_bds_deserialize(&p, state2, buf, bds_k);
+    rc = xmss_bds_deserialize(&t.p, state2, buf, bds_k);
     snprintf(label, sizeof(label), "%s (k=%u): deserialize", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
     /* Sign with deserialized state and verify */
-    rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state2, bds_k);
+    rc = xmss_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, state2, bds_k);
     snprintf(label, sizeof(label), "%s (k=%u): sign after deser", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
-    rc = xmss_verify(&p, msg, sizeof(msg), sig, pk);
+    rc = xmss_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
     snprintf(label, sizeof(label), "%s (k=%u): verify after deser", name, bds_k);
     TEST(label, rc == XMSS_OK);
 
-    free(pk); free(sk); free(sig); free(state); free(state2); free(buf);
+    free(state2); free(buf);
+    xmss_test_ctx_free(&t);
 }
 
 /* ------------------------------------------------------------------ */
@@ -74,54 +70,50 @@ static void test_roundtrip_after_keygen(uint32_t oid, const char *name,
 static void test_roundtrip_mid_signing(uint32_t oid, const char *name,
                                        uint32_t bds_k)
 {
-    xmss_params p;
-    xmss_bds_state *state, *state2;
-    uint8_t *pk, *sk, *sig, *buf;
+    xmss_test_ctx t;
+    xmss_bds_state *state2;
+    uint8_t *buf;
     uint32_t sz;
     char label[128];
     int i, rc;
 
-    xmss_params_from_oid(&p, oid);
-    sz = xmss_bds_serialized_size(&p, bds_k);
-
-    pk     = (uint8_t *)malloc(p.pk_bytes);
-    sk     = (uint8_t *)malloc(p.sk_bytes);
-    sig    = (uint8_t *)malloc(p.sig_bytes);
-    state  = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&t, oid);
+    sz = xmss_bds_serialized_size(&t.p, bds_k);
     state2 = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
     buf    = (uint8_t *)malloc(sz);
 
     test_rng_reset(200);
-    xmss_keygen(&p, pk, sk, state, bds_k, test_randombytes);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, bds_k, test_randombytes);
 
     /* Sign 5 messages */
     for (i = 0; i < 5; i++) {
         uint8_t msg[2] = { (uint8_t)i, (uint8_t)(i ^ 0xAA) };
-        rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state, bds_k);
+        rc = xmss_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, bds_k);
         snprintf(label, sizeof(label), "%s (k=%u): pre-sign idx=%d",
                  name, bds_k, i);
         TEST(label, rc == XMSS_OK);
     }
 
     /* Serialize and deserialize */
-    xmss_bds_serialize(&p, buf, state, bds_k);
-    xmss_bds_deserialize(&p, state2, buf, bds_k);
+    xmss_bds_serialize(&t.p, buf, t.state, bds_k);
+    xmss_bds_deserialize(&t.p, state2, buf, bds_k);
 
     /* Sign one more with deserialized state and verify */
     {
         uint8_t msg[] = { 0xCA, 0xFE };
-        rc = xmss_sign(&p, sig, msg, sizeof(msg), sk, state2, bds_k);
+        rc = xmss_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, state2, bds_k);
         snprintf(label, sizeof(label), "%s (k=%u): sign after 5+deser",
                  name, bds_k);
         TEST(label, rc == XMSS_OK);
 
-        rc = xmss_verify(&p, msg, sizeof(msg), sig, pk);
+        rc = xmss_verify(&t.p, msg, sizeof(msg), t.sig, t.pk);
         snprintf(label, sizeof(label), "%s (k=%u): verify after 5+deser",
                  name, bds_k);
         TEST(label, rc == XMSS_OK);
     }
 
-    free(pk); free(sk); free(sig); free(state); free(state2); free(buf);
+    free(state2); free(buf);
+    xmss_test_ctx_free(&t);
 }
 
 /* ------------------------------------------------------------------ */
@@ -129,46 +121,41 @@ static void test_roundtrip_mid_signing(uint32_t oid, const char *name,
 /* ------------------------------------------------------------------ */
 static void test_byte_exact(uint32_t oid, const char *name, uint32_t bds_k)
 {
-    xmss_params p;
-    xmss_bds_state *state, *state2;
-    uint8_t *pk, *sk, *buf1, *buf2;
+    xmss_test_ctx t;
+    xmss_bds_state *state2;
+    uint8_t *buf1, *buf2;
     uint32_t sz;
     char label[128];
 
-    xmss_params_from_oid(&p, oid);
-    sz = xmss_bds_serialized_size(&p, bds_k);
-
-    pk     = (uint8_t *)malloc(p.pk_bytes);
-    sk     = (uint8_t *)malloc(p.sk_bytes);
-    state  = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
+    xmss_test_ctx_init(&t, oid);
+    sz = xmss_bds_serialized_size(&t.p, bds_k);
     state2 = (xmss_bds_state *)malloc(sizeof(xmss_bds_state));
     buf1   = (uint8_t *)malloc(sz);
     buf2   = (uint8_t *)malloc(sz);
 
     test_rng_reset(300);
-    xmss_keygen(&p, pk, sk, state, bds_k, test_randombytes);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, bds_k, test_randombytes);
 
     /* Sign a few to get non-trivial state */
     {
-        uint8_t *sig_buf = (uint8_t *)malloc(p.sig_bytes);
         uint8_t msg[] = { 0x01 };
         int i;
         for (i = 0; i < 3; i++) {
             msg[0] = (uint8_t)i;
-            xmss_sign(&p, sig_buf, msg, sizeof(msg), sk, state, bds_k);
+            xmss_sign(&t.p, t.sig, msg, sizeof(msg), t.sk, t.state, bds_k);
         }
-        free(sig_buf);
     }
 
-    xmss_bds_serialize(&p, buf1, state, bds_k);
-    xmss_bds_deserialize(&p, state2, buf1, bds_k);
-    xmss_bds_serialize(&p, buf2, state2, bds_k);
+    xmss_bds_serialize(&t.p, buf1, t.state, bds_k);
+    xmss_bds_deserialize(&t.p, state2, buf1, bds_k);
+    xmss_bds_serialize(&t.p, buf2, state2, bds_k);
 
     snprintf(label, sizeof(label), "%s (k=%u): byte-exact round-trip",
              name, bds_k);
     TEST(label, memcmp(buf1, buf2, sz) == 0);
 
-    free(pk); free(sk); free(state); free(state2); free(buf1); free(buf2);
+    free(state2); free(buf1); free(buf2);
+    xmss_test_ctx_free(&t);
 }
 
 /* ------------------------------------------------------------------ */

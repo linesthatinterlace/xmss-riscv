@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(xmss_riscv C)
+project(xmss_jasmin C)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -12,7 +12,10 @@ add_compile_options(
     -Wpedantic
     -Wvla
     -Wmissing-prototypes
+    -Wstrict-prototypes
     -Wshadow
+    -Wconversion
+    -Wsign-conversion
 )
 
 # Debug build: sanitizers
@@ -22,16 +25,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
         add_link_options(-fsanitize=address,undefined)
     endif()
 endif()
-
-# -----------------------------------------------------------------------
-# Include paths
-# -----------------------------------------------------------------------
-include_directories(
-    ${CMAKE_SOURCE_DIR}
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/hash
-)
 
 # -----------------------------------------------------------------------
 # XMSS library

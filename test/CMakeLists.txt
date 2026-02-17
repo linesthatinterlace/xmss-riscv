@@ -1,103 +1,54 @@
 cmake_minimum_required(VERSION 3.16)
 
-# test_params
-add_executable(test_params test_params.c)
-target_link_libraries(test_params xmss)
-target_include_directories(test_params PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-add_test(NAME test_params COMMAND test_params)
+# Helper: add a test that links against xmss with standard include paths.
+# Extra include dirs can be appended after the test name.
+function(add_xmss_test test_name)
+    add_executable(${test_name} ${test_name}.c)
+    target_link_libraries(${test_name} xmss)
+    target_include_directories(${test_name} PRIVATE
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/src
+        ${ARGN}
+    )
+    add_test(NAME ${test_name} COMMAND ${test_name})
+endfunction()
 
-# test_address
-add_executable(test_address test_address.c)
-target_link_libraries(test_address xmss)
-target_include_directories(test_address PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-add_test(NAME test_address COMMAND test_address)
+# Fast tests (no tree operations, < 1 s each)
+add_xmss_test(test_params)
+add_xmss_test(test_address)
+add_xmss_test(test_hash          ${CMAKE_SOURCE_DIR}/src/hash)
+add_xmss_test(test_wots)
+add_xmss_test(test_xmssmt_params)
+add_xmss_test(test_utils_internal ${CMAKE_SOURCE_DIR}/src/hash)
 
-# test_hash
-add_executable(test_hash test_hash.c)
-target_link_libraries(test_hash xmss)
-target_include_directories(test_hash PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/hash
+set_tests_properties(
+    test_params test_address test_hash test_wots test_xmssmt_params test_utils_internal
+    PROPERTIES LABELS "fast"
 )
-add_test(NAME test_hash COMMAND test_hash)
 
-# test_wots
-add_executable(test_wots test_wots.c)
-target_link_libraries(test_wots xmss)
-target_include_directories(test_wots PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-add_test(NAME test_wots COMMAND test_wots)
+# Slow tests (keygen/sign/verify roundtrips, KAT, BDS)
+add_xmss_test(test_xmss)
+add_xmss_test(test_kat)
+add_xmss_test(test_bds)
+add_xmss_test(test_bds_serial)
+add_xmss_test(test_xmssmt)
 
-# test_xmss (integration: keygen/sign/verify)
-add_executable(test_xmss test_xmss.c)
-target_link_libraries(test_xmss xmss)
-target_include_directories(test_xmss PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+set_tests_properties(
+    test_xmss test_kat test_bds test_bds_serial test_xmssmt
+    PROPERTIES LABELS "slow"
 )
-add_test(NAME test_xmss COMMAND test_xmss)
 
-# test_kat (KAT cross-validated against xmss-reference)
-add_executable(test_kat test_kat.c)
-target_link_libraries(test_kat xmss)
-target_include_directories(test_kat PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+# Timeouts: generous limits to catch hangs without breaking slow runs.
+# Fast tests should finish in well under 30 s; slow tests under 5 min.
+set_tests_properties(
+    test_params test_address test_hash test_wots test_xmssmt_params test_utils_internal
+    PROPERTIES TIMEOUT 30
 )
-add_test(NAME test_kat COMMAND test_kat)
-
-# test_bds (BDS-specific parameter tests: bds_k validation, k=2/4)
-add_executable(test_bds test_bds.c)
-target_link_libraries(test_bds xmss)
-target_include_directories(test_bds PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+set_tests_properties(
+    test_xmss test_bds test_bds_serial
+    PROPERTIES TIMEOUT 120
 )
-add_test(NAME test_bds COMMAND test_bds)
-
-# test_bds_serial (BDS serialization round-trip tests)
-add_executable(test_bds_serial test_bds_serial.c)
-target_link_libraries(test_bds_serial xmss)
-target_include_directories(test_bds_serial PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
+set_tests_properties(
+    test_kat test_xmssmt
+    PROPERTIES TIMEOUT 300
 )
-add_test(NAME test_bds_serial COMMAND test_bds_serial)
-
-# test_xmssmt_params (XMSS-MT parameter validation)
-add_executable(test_xmssmt_params test_xmssmt_params.c)
-target_link_libraries(test_xmssmt_params xmss)
-target_include_directories(test_xmssmt_params PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-add_test(NAME test_xmssmt_params COMMAND test_xmssmt_params)
-
-# test_xmssmt (XMSS-MT integration: keygen/sign/verify)
-add_executable(test_xmssmt test_xmssmt.c)
-target_link_libraries(test_xmssmt xmss)
-target_include_directories(test_xmssmt PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-)
-add_test(NAME test_xmssmt COMMAND test_xmssmt)
-
-# test_utils_internal (unit tests for ct_memcmp, ull_to_bytes, bytes_to_ull,
-#                      xmss_memzero, xmss_PRF_idx, key exhaustion)
-add_executable(test_utils_internal test_utils_internal.c)
-target_link_libraries(test_utils_internal xmss)
-target_include_directories(test_utils_internal PRIVATE
-    ${CMAKE_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/src/hash
-)
-add_test(NAME test_utils_internal COMMAND test_utils_internal)

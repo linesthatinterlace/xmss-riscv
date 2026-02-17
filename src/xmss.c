@@ -23,22 +23,7 @@
 #include "ltree.h"
 #include "treehash.h"
 #include "bds.h"
-
-/* ====================================================================
- * SK / PK field accessors
- * ==================================================================== */
-
-/* SK offsets */
-static uint32_t sk_off_oid (const xmss_params *p) { (void)p; return 0; }
-static uint32_t sk_off_idx (const xmss_params *p) { (void)p; return 4; }
-static uint32_t sk_off_seed(const xmss_params *p) { return 4 + p->idx_bytes; }
-static uint32_t sk_off_prf (const xmss_params *p) { return 4 + p->idx_bytes + p->n; }
-static uint32_t sk_off_root(const xmss_params *p) { return 4 + p->idx_bytes + 2*p->n; }
-static uint32_t sk_off_pub_seed(const xmss_params *p) { return 4 + p->idx_bytes + 3*p->n; }
-
-/* PK offsets */
-static uint32_t pk_off_root(const xmss_params *p) { (void)p; return 4; }
-static uint32_t pk_off_seed(const xmss_params *p) { return 4 + p->n; }
+#include "sk_offsets.h"
 
 /* ====================================================================
  * Naive keygen/sign — gated behind XMSS_NAIVE_AUTH_PATH

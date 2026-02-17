@@ -13,7 +13,14 @@
 #include "../include/xmss/params.h"
 #include "../include/xmss/xmss.h"
 
-/* Compute retain_count for a given bds_k */
+/**
+ * retain_count() - Number of retain nodes stored for a given bds_k.
+ *
+ * The BDS algorithm caches right-sibling nodes at the top bds_k levels of
+ * the tree.  At level i (counting from tree_height - bds_k), there are
+ * 2^(tree_height - 1 - i) - 1 right-sibling nodes to retain, but the
+ * total across all bds_k levels sums to 2^bds_k - bds_k - 1.
+ */
 static uint32_t retain_count(uint32_t bds_k)
 {
     if (bds_k == 0) return 0;

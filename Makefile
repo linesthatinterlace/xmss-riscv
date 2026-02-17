@@ -6,7 +6,7 @@ BUILD     := build-rel
 BUILD_DBG := build
 BUILD_RV  := build-rv
 
-.PHONY: all debug test test-fast clean rv
+.PHONY: all debug test test-fast clean rv help
 
 # Default: Release build
 all:
@@ -23,10 +23,8 @@ test: all
 	ctest --test-dir $(BUILD) --output-on-failure
 
 # Build + run only fast tests (no tree operations)
-# Includes: test_params, test_address, test_hash, test_wots, test_xmssmt_params
-# Excludes: test_xmss, test_kat, test_bds, test_bds_serial, test_xmssmt
 test-fast: all
-	ctest --test-dir $(BUILD) --output-on-failure -R '(test_params|test_address|test_hash|test_wots|test_xmssmt_params)'
+	ctest --test-dir $(BUILD) --output-on-failure -L fast
 
 # RISC-V cross-compile
 rv:
@@ -36,3 +34,12 @@ rv:
 # Remove all build directories
 clean:
 	rm -rf $(BUILD) $(BUILD_DBG) $(BUILD_RV)
+
+help:
+	@echo "Available targets:"
+	@echo "  make            Release build"
+	@echo "  make test       Build + run all tests"
+	@echo "  make test-fast  Build + run fast tests only (uses CTest label 'fast')"
+	@echo "  make debug      Debug build with ASan + UBSan"
+	@echo "  make rv         RISC-V cross-compile"
+	@echo "  make clean      Remove all build directories"
