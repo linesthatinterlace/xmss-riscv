@@ -13,7 +13,7 @@ A from-scratch implementation of **XMSS** and **XMSS-MT** (eXtended Merkle Signa
 Goals:
 - Full RFC 8391 compliance — all 12 XMSS and 32 XMSS-MT parameter sets
 - BDS-accelerated signing: O(h/2) leaf computations per signature instead of O(h * 2^h)
-- No external dependencies — SHA-2 and SHAKE are vendored and stack-based (no `malloc`)
+- No external dependencies — SHA-2 and SHAKE implemented from scratch, stack-based (no `malloc`)
 - Cross-compiles to RISC-V 64-bit; tested under `qemu-riscv64`
 - Structured for a future Jasmin port (hash dispatch isolated to one file)
 
@@ -138,8 +138,7 @@ src/
 test/              Unit and integration tests
 cmake/             RISC-V cross-compilation toolchain file
 doc/               RFC 8391 text
-third_party/       xmss-reference submodule (read-only); vendored PQClean
-                   SHA-2 and fips202 (not used in build)
+third_party/       xmss-reference submodule (read-only)
 ```
 
 ## Jasmin port
@@ -166,4 +165,4 @@ Implements RFC 8391 Errata 7900 (SK serialisation byte layout):
 
 ## Licence
 
-Public domain / CC0. The vendored `third_party/` files retain their original licences (PQClean: MIT / public domain).
+Public domain / CC0.

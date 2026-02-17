@@ -126,6 +126,5 @@ These are enforced and must not be broken by any change:
 
 ## Dependencies
 
-None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/` contents:
-- `sha2/`, `fips202/` — PQClean vendored sources, not used in the build (we use `src/hash/sha2_local.c` and `src/hash/shake_local.c`).
+None at runtime. Build requires CMake ≥ 3.16 and a C99 compiler. `third_party/` contains:
 - `xmss-reference/` — git submodule of [XMSS/xmss-reference](https://github.com/XMSS/xmss-reference). **Read-only reference**: used to regenerate KAT fingerprints and as an algorithmic reference (especially for BDS in `xmss_core_fast.c`). **Do NOT copy code from it** — our implementation must follow Jasmin portability rules (no VLAs, no malloc, no function pointers, etc.) which the reference violates. Only read it to understand algorithm logic, then reimplement from scratch.
