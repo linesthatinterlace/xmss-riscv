@@ -21,8 +21,3 @@ These apply to ALL implementations regardless of language:
 - All implementations must target RFC 8391 including Errata 7900.
 - Secret-dependent branches and memory accesses must be constant-time. Verification uses constant-time comparison. Annotate any deviations.
 - No implementation should depend on `third_party/xmss-reference/` at build time -- it is a development reference only.
-
-## Future work
-
-- **Remaining-signatures query**: Sign functions return exhaustion errors but there is no function to query how many signatures remain.
-- **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT parameter sets (the reference embeds BDS state in the SK buffer, so byte-level comparison requires a translation layer).
