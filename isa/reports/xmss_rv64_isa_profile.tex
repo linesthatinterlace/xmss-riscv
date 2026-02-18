@@ -19,7 +19,8 @@
 \setlength{\parskip}{0.6em}
 
 \title{RISC-V ISA Profile of the XMSS C Implementation}
-\author{XMSS-Jasmin Project}
+\author{Wrenna Robson\thanks{With Claude (Anthropic), which co-authored
+  the analysis tooling and report text.}}
 \date{February 2026}
 
 \begin{document}
@@ -31,6 +32,13 @@ XMSS (RFC~8391) is a stateful hash-based signature scheme standardised for
 post-quantum use.  We are building a formally verifiable implementation in
 Jasmin, targeting x86-64 first (where the Jasmin compiler is mature) and
 RISC-V second (where the backend is under active development).
+
+As a reference for the Jasmin port, we have written a C99 implementation
+of XMSS and XMSS-MT from scratch, following RFC~8391 including
+Errata~7900.  This implementation is designed to be structurally portable
+to Jasmin: no VLAs, no heap allocation, no function pointers, no
+recursion, and all loop bounds derivable from parameter constants.  It is
+this C~implementation---not the upstream reference---that we analyse here.
 
 Before writing RISC-V Jasmin code---or contributing to the Jasmin RISC-V
 backend---we need to know which ISA extensions XMSS actually exercises.
