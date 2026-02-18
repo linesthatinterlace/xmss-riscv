@@ -1,0 +1,240 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage[table]{xcolor}
+\usepackage{enumitem}
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  urlcolor=blue!60!black,
+}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+
+\title{RISC-V ISA Profile of the XMSS C Implementation}
+\author{XMSS-Jasmin Project}
+\date{February 2026}
+
+\begin{document}
+\maketitle
+
+\section{Context}
+
+XMSS (RFC~8391) is a stateful hash-based signature scheme standardised for
+post-quantum use.  We are building a formally verifiable implementation in
+Jasmin, targeting x86-64 first (where the Jasmin compiler is mature) and
+RISC-V second (where the backend is under active development).
+
+Before writing RISC-V Jasmin code---or contributing to the Jasmin RISC-V
+backend---we need to know which ISA extensions XMSS actually exercises.
+This report answers that question by disassembling the compiled C
+implementation and classifying every instruction.
+
+The key question is: \emph{does XMSS require anything beyond RV64I + M?}
+If the algorithm logic is pure I+M, then ISA extension work (Zbb rotates
+for SHA-2, etc.)\ is confined to the hash layer and does not affect the
+algorithm-level Jasmin code.
+
+\section{Methodology}
+
+\subsection{Analysis target}
+
+We analyse \texttt{libxmss.a}---the static library containing only XMSS
+algorithm code: parameter derivation, hash wrappers, WOTS+, L-tree,
+treehash, BDS state management, XMSS signing/verification, and XMSS-MT.
+This comprises 13 object files.
+
+Crucially, the library excludes \texttt{printf}, \texttt{malloc}, stack
+guards, and other libc/test-harness code.  Analysing test binaries (the
+approach of a previous iteration) would have included hundreds of libc
+instructions that have nothing to do with XMSS.
+
+\subsection{Toolchain}
+
+\begin{tabular}{@{}lp{9cm}@{}}
+  Compiler   & \texttt{riscv64-linux-gnu-gcc} 13.3.0 (Ubuntu) \\
+  Flags      & \texttt{-march=rv64gc -mabi=lp64d -O3} \\
+  Disassembler & \texttt{riscv64-linux-gnu-objdump} (Binutils 2.42) \\
+\end{tabular}
+
+The \texttt{rv64gc} march is the standard general-purpose profile:
+RV64I + M + A + F + D + Zicsr + Zifencei + C.  It does \emph{not}
+include Zba, Zbb, or other bitmanip extensions.
+
+\subsection{Classification}
+
+Each disassembled instruction is classified on two orthogonal axes:
+
+\begin{enumerate}[nosep]
+  \item \textbf{Semantic extension} (what the instruction does): I, M,
+    A, F, D, Zba, Zbb, etc.  Determined by looking up the mnemonic in
+    a table generated from the \texttt{riscv\mbox{-}opcodes} database
+    (the same database used by the RISC-V toolchain).
+  \item \textbf{Encoding width} (how it is encoded): 16-bit compressed
+    (C extension) or 32-bit standard.  Determined from the raw instruction
+    byte count in the objdump output.
+\end{enumerate}
+
+The semantic extension is what matters for Jasmin.  C encoding is a
+secondary observation: the assembler handles it automatically and it does
+not affect which instructions Jasmin source code must express.
+
+A subtlety: GNU objdump renders compressed instructions using their
+uncompressed aliases (\texttt{sd} not \texttt{c.sd}).  A na\"{\i}ve
+classifier that looks for \texttt{c.}~prefixes would report C = 0\%.
+We detect C encoding from byte width instead.
+
+\section{Findings}
+
+\subsection{Extension summary}
+
+Table~\ref{tab:ext-summary} shows the complete picture: XMSS uses only
+the I and M extensions.
+
+\begin{table}[ht]
+\centering
+\caption{Semantic extension summary across all 13 object files.}
+\label{tab:ext-summary}
+\begin{tabular}{@{}lrrp{7cm}@{}}
+\toprule
+Extension & Instructions & Unique mnemonics & Notes \\
+\midrule
+\textbf{I} & 9505 & 46 & Base integer: loads, stores, branches, arithmetic, shifts \\
+\textbf{M} &   57 &  3 & \texttt{mulw}~(37), \texttt{mul}~(17), \texttt{divuw}~(3) \\
+\midrule
+A, F, D    &    0 &  0 & Not present despite being enabled by \texttt{rv64gc} \\
+Zba, Zbb, Zbs & 0 & 0 & Not present (not in \texttt{rv64gc}; see \S\ref{sec:zbb}) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+99.4\% of instructions are base integer (I).  The 0.6\% that are M come
+entirely from compiler-generated address arithmetic: \texttt{mulw} for
+array index calculations, \texttt{mul} for 64-bit offset computation, and
+\texttt{divuw} for parameter derivation in \texttt{params.c}.
+
+\subsection{Per-module breakdown}
+
+Table~\ref{tab:per-module} shows instruction counts per object file,
+grouped into algorithm modules and hash modules.
+
+\begin{table}[ht]
+\centering
+\caption{Per-object-file instruction counts.  M column shows M-extension
+  instruction count; all remaining instructions are I.}
+\label{tab:per-module}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Object file & Total & M insns & C-encoded (\%) \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Hash layer}} \\
+\quad \texttt{sha2\_local.c.o} & 1953 & 0 & 33\% \\
+\quad \texttt{shake\_local.c.o} & 1337 & 0 & 44\% \\
+\quad \texttt{xmss\_hash.c.o} & 1082 & 0 & 51\% \\
+\midrule
+\multicolumn{4}{@{}l}{\textit{Algorithm layer}} \\
+\quad \texttt{bds.c.o} & 1130 & 5 & 55\% \\
+\quad \texttt{xmss\_mt.c.o} & 1145 & 18 & 58\% \\
+\quad \texttt{wots.c.o} & 760 & 4 & 47\% \\
+\quad \texttt{xmss.c.o} & 637 & 3 & 60\% \\
+\quad \texttt{treehash.c.o} & 484 & 2 & 50\% \\
+\quad \texttt{bds\_serialize.c.o} & 473 & 14 & 53\% \\
+\quad \texttt{params.c.o} & 286 & 6 & 60\% \\
+\quad \texttt{ltree.c.o} & 129 & 5 & 69\% \\
+\quad \texttt{address.c.o} & 99 & 0 & 38\% \\
+\quad \texttt{utils.c.o} & 47 & 0 & 68\% \\
+\midrule
+\textbf{Total} & \textbf{9562} & \textbf{57} & \textbf{48\%} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Two observations:
+
+\begin{itemize}[nosep]
+  \item The hash layer (SHA-2, SHAKE, hash dispatch) uses \emph{zero} M
+    instructions.  It is pure RV64I.
+  \item M instructions appear only in the algorithm layer, and only for
+    index/offset arithmetic the compiler generates from C expressions like
+    \texttt{idx * n} or \texttt{h / d}.
+\end{itemize}
+
+\subsection{Compressed encoding}
+
+48\% of instructions use 16-bit C~encoding.  This varies from 33\%
+(\texttt{sha2\_local.c.o}, which has many 32-bit shift-immediate
+instructions for SHA-2 rotations) to 69\% (\texttt{ltree.c.o}, which is
+mostly register moves and branches).
+
+C~encoding is handled automatically by the assembler and is invisible to
+Jasmin source code.  It reduces code size but does not affect correctness
+or the set of required ISA extensions.
+
+\section{The Zbb question}
+\label{sec:zbb}
+
+The most interesting finding is what is \emph{absent}.  The hash
+modules (\texttt{sha2\_local.c.o}, \texttt{shake\_\allowbreak{}local.c.o})
+implement SHA-256, SHA-512, and Keccak using only RV64I
+operations.  SHA-2 in particular requires 32-bit rotations, which
+the compiler synthesises as shift--shift--or sequences:
+
+\begin{verbatim}
+  srliw  a5, a5, 17    # high part
+  slliw  a4, a4, 15    # low part
+  or     a5, a5, a4    # combine
+\end{verbatim}
+
+The Zbb extension provides a single \texttt{rorw} instruction that
+replaces this 3-instruction sequence.  Similarly, \texttt{rev8} (Zbb)
+would replace multi-instruction byte-swap sequences in SHA-2
+endianness conversion.
+
+Since \texttt{rv64gc} does not include Zbb, the compiler cannot emit
+these instructions.  But a Jasmin implementation targeting
+\texttt{rv64gc\_zbb} could use them explicitly in the hash layer,
+gaining performance without affecting the algorithm layer at all.
+
+This reinforces the algorithm/hash boundary in the C~implementation's
+architecture: the hash layer is the only place where ISA-specific
+optimisation is relevant.  All algorithm-layer Jasmin code can be written
+in pure RV64I (with compiler-inserted M for index arithmetic).
+
+\section{Recommended Jasmin targets}
+
+\begin{description}[style=nextline,leftmargin=1.5cm]
+  \item[\texttt{rv64im} (minimum)]
+    Base integer + multiply/divide.  Sufficient for all XMSS algorithm
+    logic.  The hash layer would use software rotations.
+  \item[\texttt{rv64gc} (standard)]
+    The standard Linux general-purpose profile.  Adds A, F, D, Zicsr,
+    Zifencei, and C---none of which XMSS uses, but targeting it ensures
+    binary compatibility with standard RISC-V Linux distributions.
+  \item[\texttt{rv64gc\_zbb} (optimised)]
+    Adds Zbb to the standard profile.  The hash layer can exploit
+    \texttt{rorw}/\texttt{ror} for SHA-2 rotations and \texttt{rev8}
+    for endianness conversion.  Algorithm-layer code is unchanged.
+\end{description}
+
+\section{Next steps}
+
+\begin{enumerate}[nosep]
+  \item The Jasmin implementation starts with x86-64, where the compiler
+    backend is mature and the hash layer can use native rotation
+    instructions (\texttt{ROR}).
+  \item Algorithm-layer Jasmin code (WOTS+, BDS, treehash, XMSS sign/verify)
+    should use only portable basic operations---no architecture-specific
+    intrinsics.  The ISA analysis confirms this is sufficient.
+  \item When the Jasmin RISC-V backend matures, the algorithm layer ports
+    directly.  The hash layer is the only component requiring
+    architecture-specific work (Zbb rotations).
+\end{enumerate}
+
+\end{document}
