@@ -80,32 +80,36 @@ for extfile in "${OPCODES_DIR}"/rv_* "${OPCODES_DIR}"/rv64_*; do
             # Format: $pseudo_op <ext>::<base_insn> <pseudo_mnemonic> <operands...>
             # The pseudo mnemonic is the third whitespace-delimited field
             mnem="$(echo "$line" | awk '{print $3}')"
+            is_pseudo=1
         else
             # Real instruction: first word is the mnemonic
             mnem="$(echo "$line" | awk '{print $1}')"
+            is_pseudo=0
         fi
 
         [[ -z "$mnem" ]] && continue
 
-        printf '%s\t%s\n' "$mnem" "$ext" >> "${RAW}"
+        # Priority: real rv64_ (1) > real rv_ (2) > pseudo rv64_ (3) > pseudo rv_ (4)
+        # Lower number = higher priority. Used during dedup to prefer the
+        # "defining" extension over re-exports (e.g. rev8 is defined in Zbb
+        # but re-exported as a pseudo in Zbkb; we want Zbb).
+        if [[ "$is_pseudo" -eq 0 ]]; then
+            if [[ "$fname" == rv64_* ]]; then pri=1; else pri=2; fi
+        else
+            if [[ "$fname" == rv64_* ]]; then pri=3; else pri=4; fi
+        fi
+
+        printf '%s\t%s\t%s\n' "$mnem" "$ext" "$pri" >> "${RAW}"
     done < "$extfile"
 done
 
-# De-duplicate: if the same mnemonic appears in multiple files, keep the
-# most specific (rv64_ > rv_). Since rv64_ files are processed after rv_,
-# the last occurrence wins. Also, some pseudos appear in extension files
-# they don't semantically belong to (e.g. frcsr is a pseudo in rv_f but
-# maps to Zicsr). We keep the file-of-origin mapping which is correct
-# for our purposes.
-#
-# Sort by mnemonic, keep last occurrence of each mnemonic.
-sort -t$'\t' -k1,1 -s "${RAW}" | awk -F'\t' '
-{
-    ext[$1] = $2
-}
-END {
-    for (m in ext) print m "\t" ext[m]
-}
+# De-duplicate: when the same mnemonic appears in multiple extension files,
+# keep the highest-priority entry (lowest priority number). This ensures
+# that the "defining" extension wins over re-exports. For example, rev8 is
+# a real instruction in rv64_zbb (pri=1) but a $pseudo_op in rv64_zbkb
+# (pri=3), so we keep Zbb.
+sort -t$'\t' -k1,1 -k3,3n -s "${RAW}" | awk -F'\t' '
+!seen[$1]++ { print $1 "\t" $2 }
 ' | sort -t$'\t' -k1,1 > "${TMPDIR_BASE}/deduped.tsv"
 
 # For C extension mnemonics (c.xxx), also emit the de-aliased form (xxx)

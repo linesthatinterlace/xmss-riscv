@@ -178,11 +178,10 @@ or the set of required ISA extensions.
 \section{The Zbb question}
 \label{sec:zbb}
 
-The most interesting finding is what is \emph{absent}.  The hash
-modules (\texttt{sha2\_local.c.o}, \texttt{shake\_\allowbreak{}local.c.o})
-implement SHA-256, SHA-512, and Keccak using only RV64I
-operations.  SHA-2 in particular requires 32-bit rotations, which
-the compiler synthesises as shift--shift--or sequences:
+With \texttt{-march=rv64gc}, the hash modules implement SHA-256,
+SHA-512, and Keccak using only RV64I operations.  SHA-2 in particular
+requires 32-bit rotations, which the compiler synthesises as
+shift--shift--or sequences:
 
 \begin{verbatim}
   srliw  a5, a5, 17    # high part
@@ -192,18 +191,76 @@ the compiler synthesises as shift--shift--or sequences:
 
 The Zbb extension provides a single \texttt{rorw} instruction that
 replaces this 3-instruction sequence.  Similarly, \texttt{rev8} (Zbb)
-would replace multi-instruction byte-swap sequences in SHA-2
-endianness conversion.
+replaces multi-instruction byte-swap sequences for SHA-2 endianness
+conversion.  Since \texttt{rv64gc} does not include Zbb, the compiler
+cannot emit these instructions.
 
-Since \texttt{rv64gc} does not include Zbb, the compiler cannot emit
-these instructions.  But a Jasmin implementation targeting
-\texttt{rv64gc\_zbb} could use them explicitly in the hash layer,
-gaining performance without affecting the algorithm layer at all.
+\subsection{Empirical verification: \texttt{rv64gc\_zbb}}
 
-This reinforces the algorithm/hash boundary in the C~implementation's
-architecture: the hash layer is the only place where ISA-specific
-optimisation is relevant.  All algorithm-layer Jasmin code can be written
-in pure RV64I (with compiler-inserted M for index arithmetic).
+Recompiling \texttt{libxmss.a} with \texttt{-march=rv64gc\_zbb}
+confirms the prediction.  Table~\ref{tab:zbb-summary} shows the
+extension breakdown.
+
+\begin{table}[ht]
+\centering
+\caption{Extension comparison: \texttt{rv64gc} vs \texttt{rv64gc\_zbb}.}
+\label{tab:zbb-summary}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Extension & \texttt{rv64gc} & \texttt{rv64gc\_zbb} & Delta \\
+\midrule
+\textbf{I}   & 9505 & 9281 & $-$224 \\
+\textbf{M}   &   57 &   57 &      0 \\
+\textbf{Zbb} &    0 &  164 &  +164 \\
+\midrule
+Total        & 9562 & 9502 &   $-$60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The total instruction count drops by 60: Zbb replaces multi-instruction
+sequences with single instructions, reducing both instruction count
+and code size.
+
+Table~\ref{tab:zbb-detail} breaks down the 164 Zbb instructions.
+
+\begin{table}[ht]
+\centering
+\caption{Zbb instructions emitted with \texttt{-march=rv64gc\_zbb}.}
+\label{tab:zbb-detail}
+\begin{tabular}{@{}rlll@{}}
+\toprule
+Count & Mnemonic & Object files & Replaces \\
+\midrule
+41 & \texttt{rolw}  & sha2\_local & \texttt{srliw}+\texttt{slliw}+\texttt{or} \\
+28 & \texttt{andn}  & sha2\_local, shake\_local, xmss\_mt & \texttt{not}+\texttt{and} \\
+27 & \texttt{rori}  & sha2\_local & \texttt{srli}+\texttt{slli}+\texttt{or} \\
+19 & \texttt{rev8}  & sha2\_local & multi-insn byte-swap \\
+17 & \texttt{roriw} & sha2\_local & \texttt{srliw}+\texttt{slliw}+\texttt{or} \\
+17 & \texttt{rol}   & sha2\_local, shake\_local & \texttt{srl}+\texttt{sll}+\texttt{or} \\
+12 & \texttt{maxu}  & bds, treehash, xmss\_hash & branch-based max \\
+ 3 & \texttt{minu}  & bds, shake\_local & branch-based min \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Where Zbb lands}
+
+Of the 164 Zbb instructions, \textbf{142 (87\%)} are in the hash
+layer (\texttt{sha2\_local.c.o} and \texttt{shake\_\allowbreak{}local.c.o}).
+The rotations (\texttt{rolw}, \texttt{rori}, \texttt{roriw},
+\texttt{rol}) and byte-reversal (\texttt{rev8}) appear exclusively
+in SHA-256/SHA-512 compression and Keccak.
+
+The remaining \textbf{22 (13\%)} are in the algorithm layer:
+\texttt{maxu}/\texttt{minu} for BDS height comparisons and
+\texttt{andn} for bitmask operations in XMSS-MT.  These are minor
+opportunistic optimisations --- the algorithm does not structurally
+depend on Zbb.
+
+This confirms the architecture decision: the hash layer is the only
+component where ISA-specific optimisation matters.  All algorithm-layer
+Jasmin code can be written in pure RV64I+M.
 
 \section{Recommended Jasmin targets}
 
