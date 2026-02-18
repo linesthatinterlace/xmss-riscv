@@ -15,5 +15,6 @@ CTestTestfile.cmake
 isa/binaries/*
 !isa/binaries/.gitkeep
 
-# Generated lookup tables
+# Generated ISA analysis artefacts
 isa/scripts/mnemonic_extensions.tsv
+isa/reports/xmss_rv64_isa_profile.md
