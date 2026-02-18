@@ -10,3 +10,10 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 CTestTestfile.cmake
+
+# ISA analysis scratch space (binaries are build artefacts, not committed)
+isa/binaries/*
+!isa/binaries/.gitkeep
+
+# Generated lookup tables
+isa/scripts/mnemonic_extensions.tsv

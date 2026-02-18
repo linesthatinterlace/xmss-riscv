@@ -1,3 +1,6 @@
 [submodule "third_party/xmss-reference"]
 	path = third_party/xmss-reference
 	url = https://github.com/XMSS/xmss-reference.git
+[submodule "third_party/riscv-opcodes"]
+	path = third_party/riscv-opcodes
+	url = https://github.com/riscv/riscv-opcodes.git
