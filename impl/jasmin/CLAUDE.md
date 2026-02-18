@@ -184,6 +184,7 @@ These parallel the C implementation's J1–J8 rules:
   - SHAKE-256: `src/crypto_xof/shake256/amd64/ref/`
   - Keccak-f[1600]: `src/common/keccak/keccak1600/amd64/ref/`
 - formosa-crypto organisation: https://github.com/formosa-crypto
+- **formosa-xmss**: https://github.com/formosa-crypto/formosa-xmss — a human-authored Jasmin implementation of XMSS, subject to active research. Scope and parameter coverage TBD. **Do not treat as a template or copy from it** — our implementation is independent — but it is prior art worth being aware of and potentially cross-validating against.
 
 ## Open questions / future work
 
