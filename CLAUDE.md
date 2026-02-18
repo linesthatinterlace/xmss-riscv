@@ -8,7 +8,7 @@ Read the CLAUDE.md in the relevant implementation directory for build commands, 
 
 - **C implementation** (`impl/c/`): Complete C99 reference. See `impl/c/CLAUDE.md` for build commands, architecture, Jasmin portability rules, and test structure.
 - **Rust implementation** (`impl/rust/`): Planned. See `impl/rust/CLAUDE.md` for build commands, architecture, and Rust-specific rules.
-- **Jasmin implementation** (`impl/jasmin/`): Planned. Will target RISC-V 64-bit verified assembly.
+- **Jasmin implementation** (`impl/jasmin/`): In progress. Targets x86-64 first (mature backend); RISC-V port planned once the Jasmin RISC-V backend matures. See `impl/jasmin/CLAUDE.md`.
 
 ## Shared resources
 
@@ -25,6 +25,14 @@ GitHub Actions CI runs on every push and PR:
 **Prefer pushing and letting CI run the full test suite** rather than running slow tests locally. Use `make test-fast` locally for quick smoke checks, then push to get full coverage across compilers.
 
 Check CI status: `gh run list` / `gh run view <id>` / `gh run watch <id>`
+
+## Cross-cutting research
+
+### RISC-V instruction analysis
+
+Before extending Jasmin's RISC-V backend (or contributing to it upstream), we need to understand what instructions XMSS actually requires at the ISA level. The planned approach is to disassemble the RISC-V binaries already produced by `impl/c/` and analyse which instructions appear, which ISA extensions (B for bitmanip, V for vector, etc.) are used or would help, and where gaps in Jasmin's RISC-V backend would arise.
+
+This work draws from `impl/c/` but its output informs `impl/jasmin/`. Artifacts (scripts, reports) will live in `doc/` or a dedicated `analysis/` directory at the project root. See `impl/jasmin/CLAUDE.md` for more context.
 
 ## Cross-cutting rules
 
