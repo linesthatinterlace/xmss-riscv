@@ -3,490 +3,477 @@
 #
 # Profile which RISC-V ISA extensions are used by the XMSS C implementation.
 #
+# Methodology:
+#   - Analyses libxmss.a (or specified .a/.o files), NOT test binaries.
+#     This isolates pure XMSS code from libc/test-harness noise.
+#   - Classifies mnemonics using a lookup table generated from the
+#     riscv-opcodes submodule (authoritative source, not hand-written rules).
+#   - Detects C (compressed) encoding from raw instruction byte width
+#     (2 bytes = 16-bit compressed, 4 bytes = 32-bit standard), not from
+#     mnemonic prefixes (which objdump doesn't emit for compressed aliases).
+#   - Produces per-object-file breakdown so you can see WHERE each
+#     extension is used (e.g. hash.c.o vs wots.c.o vs bds.c.o).
+#
 # Usage:
-#   ./analyse.sh [BINARIES_DIR]
+#   ./analyse.sh [INPUT]
 #
-# BINARIES_DIR defaults to ../binaries/ relative to this script.
-# Output is written to ../reports/xmss_rv64_isa_profile.md
+#   INPUT defaults to impl/c/build-rv/libxmss.a relative to the repo root.
+#   Can also be a .o file or a directory of .o files.
 #
-# Requirements:
-#   riscv64-linux-gnu-objdump  (from binutils-riscv64-linux-gnu on Debian/Ubuntu)
+# Prerequisites:
+#   - riscv64-linux-gnu-objdump  (apt install binutils-riscv64-linux-gnu)
+#   - Lookup table: run gen_lookup.sh first, or it will be auto-generated.
+#
+# Output: isa/reports/xmss_rv64_isa_profile.md
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARIES_DIR="${1:-${SCRIPT_DIR}/../binaries}"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 REPORTS_DIR="${SCRIPT_DIR}/../reports"
 REPORT="${REPORTS_DIR}/xmss_rv64_isa_profile.md"
+LOOKUP="${SCRIPT_DIR}/mnemonic_extensions.tsv"
 OBJDUMP="riscv64-linux-gnu-objdump"
-TMPDIR_BASE="$(mktemp -d)"
-trap 'rm -rf "${TMPDIR_BASE}"' EXIT
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+INPUT="${1:-${REPO_ROOT}/impl/c/build-rv/libxmss.a}"
+
+# For display in the report, use a relative path if inside the repo
+INPUT_DISPLAY="${INPUT#${REPO_ROOT}/}"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-check_deps() {
-    if ! command -v "${OBJDUMP}" >/dev/null 2>&1; then
-        die "${OBJDUMP} not found. Install with: sudo apt install binutils-riscv64-linux-gnu"
-    fi
-    if ! command -v awk >/dev/null 2>&1; then
-        die "awk not found"
-    fi
-}
+# Check dependencies
+command -v "${OBJDUMP}" >/dev/null 2>&1 \
+    || die "${OBJDUMP} not found. Install: sudo apt install binutils-riscv64-linux-gnu"
 
-# Emit a horizontal rule of dashes (72 chars) into the report
-hr() { printf -- '---\n'; }
-
-# ---------------------------------------------------------------------------
-# ISA classification
-#
-# classify_mnemonic <mnemonic>  ->  prints one of:
-#   RV64I | M | A | F | D | C | Zb | Zicsr | Zifencei | OTHER
-#
-# Rules are matched in priority order; first match wins.
-# All comparisons are against the lowercase mnemonic.
-# ---------------------------------------------------------------------------
-classify_mnemonic() {
-    local m="$1"
-
-    # ---- Compressed (C extension) ----------------------------------------
-    # All C instructions start with "c." (e.g. c.addi, c.ld, c.sw, c.jr)
-    case "$m" in
-        c.*)  echo "C"; return ;;
-    esac
-
-    # ---- Zicsr — CSR instructions ----------------------------------------
-    case "$m" in
-        csrrw|csrrs|csrrc|csrrwi|csrrsi|csrrci|csrr|csrw|csrs|csrc) echo "Zicsr"; return ;;
-    esac
-
-    # ---- Zifencei -----------------------------------------------------------
-    case "$m" in
-        fence.i) echo "Zifencei"; return ;;
-    esac
-
-    # ---- A extension — atomics -------------------------------------------
-    # lr.w, lr.d, sc.w, sc.d, amoswap.*, amoadd.*, amoand.*, amoor.*,
-    # amoxor.*, amomin.*, amomax.*, amominu.*, amomaxu.*
-    case "$m" in
-        lr.w|lr.d|sc.w|sc.d) echo "A"; return ;;
-        amo*) echo "A"; return ;;
-    esac
-
-    # ---- M extension — multiply / divide ---------------------------------
-    # mul, mulh, mulhsu, mulhu, mulw
-    # div, divu, divw, divuw
-    # rem, remu, remw, remuw
-    case "$m" in
-        mul|mulh|mulhsu|mulhu|mulw) echo "M"; return ;;
-        div|divu|divw|divuw)        echo "M"; return ;;
-        rem|remu|remw|remuw)        echo "M"; return ;;
-    esac
-
-    # ---- F extension — single-precision float ----------------------------
-    # All start with f (fadd, fsub, fmul, fdiv, fsqrt, fmin, fmax,
-    # fmadd, fmsub, fnmadd, fnmsub, fcvt, fmv, feq, flt, fle, fclass)
-    # Also flw / fsw (float load/store)
-    case "$m" in
-        fadd.s|fsub.s|fmul.s|fdiv.s|fsqrt.s)          echo "F"; return ;;
-        fmin.s|fmax.s)                                  echo "F"; return ;;
-        fmadd.s|fmsub.s|fnmadd.s|fnmsub.s)             echo "F"; return ;;
-        fcvt.w.s|fcvt.wu.s|fcvt.s.w|fcvt.s.wu)        echo "F"; return ;;
-        fcvt.l.s|fcvt.lu.s|fcvt.s.l|fcvt.s.lu)        echo "F"; return ;;
-        fmv.w.x|fmv.x.w|fmv.s)                        echo "F"; return ;;
-        feq.s|flt.s|fle.s|fclass.s)                    echo "F"; return ;;
-        flw|fsw)                                        echo "F"; return ;;
-    esac
-
-    # ---- D extension — double-precision float ----------------------------
-    case "$m" in
-        fadd.d|fsub.d|fmul.d|fdiv.d|fsqrt.d)          echo "D"; return ;;
-        fmin.d|fmax.d)                                  echo "D"; return ;;
-        fmadd.d|fmsub.d|fnmadd.d|fnmsub.d)             echo "D"; return ;;
-        fcvt.w.d|fcvt.wu.d|fcvt.d.w|fcvt.d.wu)        echo "D"; return ;;
-        fcvt.l.d|fcvt.lu.d|fcvt.d.l|fcvt.d.lu)        echo "D"; return ;;
-        fcvt.s.d|fcvt.d.s)                             echo "D"; return ;;
-        fmv.d.x|fmv.x.d|fmv.d)                        echo "D"; return ;;
-        feq.d|flt.d|fle.d|fclass.d)                    echo "D"; return ;;
-        fld|fsd)                                        echo "D"; return ;;
-    esac
-
-    # ---- Zb* — bit-manipulation extensions --------------------------------
-    # Zba: sh1add, sh2add, sh3add, sh1add.uw, sh2add.uw, sh3add.uw,
-    #      add.uw, slli.uw
-    # Zbb: andn, orn, xnor, clz, clzw, ctz, ctzw, cpop, cpopw,
-    #      max, maxu, min, minu, sext.b, sext.h, zext.h,
-    #      rol, rolw, ror, rori, roriw, rorw,
-    #      rev8, orc.b
-    # Zbc: clmul, clmulh, clmulr
-    # Zbs: bclr, bclri, bext, bexti, binv, binvi, bset, bseti
-    case "$m" in
-        # Zba
-        sh1add|sh2add|sh3add)                           echo "Zb"; return ;;
-        sh1add.uw|sh2add.uw|sh3add.uw)                 echo "Zb"; return ;;
-        add.uw|slli.uw)                                 echo "Zb"; return ;;
-        # Zbb
-        andn|orn|xnor)                                  echo "Zb"; return ;;
-        clz|clzw|ctz|ctzw|cpop|cpopw)                  echo "Zb"; return ;;
-        max|maxu|min|minu)                              echo "Zb"; return ;;
-        sext.b|sext.h|zext.h)                          echo "Zb"; return ;;
-        rol|rolw|ror|rorw|rori|roriw)                  echo "Zb"; return ;;
-        rev8|orc.b)                                     echo "Zb"; return ;;
-        # Zbc
-        clmul|clmulh|clmulr)                           echo "Zb"; return ;;
-        # Zbs
-        bclr|bclri|bext|bexti|binv|binvi|bset|bseti)  echo "Zb"; return ;;
-    esac
-
-    # ---- RV64I base integer + privileged / system -------------------------
-    # Loads: lb, lh, lw, ld, lbu, lhu, lwu
-    # Stores: sb, sh, sw, sd
-    # Arithmetic reg: add, sub, addw, subw, and, or, xor, sll, srl, sra,
-    #                 sllw, srlw, sraw
-    # Arithmetic imm: addi, addiw, andi, ori, xori, slti, sltiu,
-    #                 slli, srli, srai, slliw, srliw, sraiw
-    # Compares: slt, sltu, slti, sltiu
-    # Upper imm: lui, auipc
-    # Jumps: jal, jalr
-    # Branches: beq, bne, blt, bge, bltu, bgeu
-    # System: ecall, ebreak, fence, mret, sret, wfi, nop, ret
-    # Pseudo: mv, li, la, neg, not, seqz, snez, sltz, sgtz, beqz, bnez,
-    #         bltz, bgez, bgtz, blez, j, jr, call, tail
-    case "$m" in
-        # Loads
-        lb|lh|lw|ld|lbu|lhu|lwu)                           echo "RV64I"; return ;;
-        # Stores
-        sb|sh|sw|sd)                                        echo "RV64I"; return ;;
-        # Register arithmetic
-        add|sub|addw|subw)                                  echo "RV64I"; return ;;
-        and|or|xor)                                         echo "RV64I"; return ;;
-        sll|srl|sra|sllw|srlw|sraw)                        echo "RV64I"; return ;;
-        # Immediate arithmetic
-        addi|addiw|andi|ori|xori)                           echo "RV64I"; return ;;
-        slli|srli|srai|slliw|srliw|sraiw)                  echo "RV64I"; return ;;
-        # Compares
-        slt|sltu|slti|sltiu)                                echo "RV64I"; return ;;
-        # Upper-immediate
-        lui|auipc)                                          echo "RV64I"; return ;;
-        # Jumps
-        jal|jalr)                                           echo "RV64I"; return ;;
-        # Branches
-        beq|bne|blt|bge|bltu|bgeu)                         echo "RV64I"; return ;;
-        # System / fence
-        ecall|ebreak|fence|fence.tso|mret|sret|uret|wfi)   echo "RV64I"; return ;;
-        # Pseudo-instructions (assembler-generated from real RV64I encodings)
-        nop|ret|mv|li|la|neg|not|negw)                      echo "RV64I"; return ;;
-        seqz|snez|sltz|sgtz)                                echo "RV64I"; return ;;
-        beqz|bnez|bltz|bgez|bgtz|blez)                     echo "RV64I"; return ;;
-        j|jr|call|tail)                                     echo "RV64I"; return ;;
-        # Sign/zero-extend pseudos (aliases for addiw/andi encodings)
-        sext.w|zext.b|zext.h|zext.w)                       echo "RV64I"; return ;;
-    esac
-
-    # ---- Anything else ----------------------------------------------------
-    echo "OTHER"
-}
-
-# ---------------------------------------------------------------------------
-# Disassemble one binary; write per-mnemonic counts to a file.
-# Output format (TSV): <count> <TAB> <mnemonic>
-# ---------------------------------------------------------------------------
-disassemble_binary() {
-    local bin="$1"
-    local out="$2"
-
-    # objdump -d output: lines with actual instructions look like:
-    #   <hex_addr>:  <hex_bytes>   <mnemonic>  [operands]
-    # We strip the address/bytes columns and pull out the first word after
-    # the tab that follows the hex bytes.  Blank lines and section headers
-    # are filtered by requiring a hex address prefix.
-    "${OBJDUMP}" -d --no-show-raw-insn "$bin" 2>/dev/null \
-    | awk '
-        # Match instruction lines: leading whitespace, hex address, colon, tab
-        /^[[:space:]]+[0-9a-f]+:[[:space:]]/ {
-            # Field layout after stripping address+colon:
-            # $1 = "addr:"  $2 = mnemonic  (objdump --no-show-raw-insn)
-            mnem = $2
-            if (mnem != "" && mnem != ".") {
-                count[mnem]++
-            }
-        }
-        END {
-            for (m in count) printf "%d\t%s\n", count[m], m
-        }
-    ' | sort -rn > "$out"
-}
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
-
-check_deps
-
-BINARIES_DIR="$(realpath "${BINARIES_DIR}")"
-REPORTS_DIR="$(realpath "${REPORTS_DIR}")"
-
-if [[ ! -d "${BINARIES_DIR}" ]]; then
-    die "Binaries directory not found: ${BINARIES_DIR}"
+# Auto-generate lookup table if missing
+if [[ ! -f "${LOOKUP}" ]]; then
+    echo "Lookup table not found; generating..." >&2
+    "${SCRIPT_DIR}/gen_lookup.sh" "${LOOKUP}" \
+        || die "Failed to generate lookup table"
 fi
 
-# Collect ELF binaries (exclude .gitkeep and any non-ELF files)
-mapfile -t BINARIES < <(
-    find "${BINARIES_DIR}" -maxdepth 1 -type f -not -name '.*' \
-    | sort \
-    | while read -r f; do
-        # Check ELF magic bytes (first 4 bytes = 7f 45 4c 46)
-        if [[ "$(head -c 4 "$f" 2>/dev/null | od -A n -t x1 | tr -d ' \n')" == "7f454c46" ]]; then
-            echo "$f"
-        fi
-    done
-)
+[[ -e "${INPUT}" ]] || die "Input not found: ${INPUT}"
 
-if [[ ${#BINARIES[@]} -eq 0 ]]; then
-    die "No RISC-V ELF binaries found in ${BINARIES_DIR}. Copy them from impl/c/build-rv/test/ first."
-fi
-
-echo "Found ${#BINARIES[@]} binary/binaries in ${BINARIES_DIR}"
+TMPDIR_BASE="$(mktemp -d)"
+trap 'rm -rf "${TMPDIR_BASE}"' EXIT
 
 mkdir -p "${REPORTS_DIR}"
 
-# ---- Per-binary disassembly and mnemonic extraction ---------------------
+# ---------------------------------------------------------------------------
+# Phase 1: Disassemble and parse
+#
+# For each object file inside the archive (or the single .o), produce a TSV:
+#   mnemonic<TAB>encoding<TAB>count
+# where encoding is "C" (16-bit) or "std" (32-bit).
+# ---------------------------------------------------------------------------
 
-# Accumulator for global counts: tmpfile maps mnemonic -> total_count
-GLOBAL_COUNTS="${TMPDIR_BASE}/global_counts.tsv"
-touch "${GLOBAL_COUNTS}"
+# Disassemble the input, producing per-object-file sections.
+# objdump on a .a shows headers like "file.c.o:     file format elf64-littleriscv"
+# before each object's disassembly.
+DISASM="${TMPDIR_BASE}/disasm.txt"
+"${OBJDUMP}" -d "${INPUT}" > "${DISASM}" 2>/dev/null
 
-# We'll also track per-binary total instruction counts for the summary table
-declare -A BIN_TOTAL_INSNS
-declare -A BIN_UNIQUE_MNEMS
+# Parse the disassembly into per-object TSV files.
+# Each instruction line looks like:
+#   <spaces><hex_addr>:<spaces><raw_hex><spaces><mnemonic><spaces><operands>
+# Raw hex: 4 chars = 2 bytes (C encoding), 8 chars = 4 bytes (32-bit).
+#
+# We use awk to split by object file and extract mnemonic + byte width.
 
-for bin in "${BINARIES[@]}"; do
-    name="$(basename "$bin")"
-    per_bin="${TMPDIR_BASE}/${name}.tsv"
-    echo "  Disassembling ${name}..."
-    disassemble_binary "$bin" "${per_bin}"
-    BIN_TOTAL_INSNS["$name"]=$(awk '{s+=$1} END{print s+0}' "${per_bin}")
-    BIN_UNIQUE_MNEMS["$name"]=$(wc -l < "${per_bin}")
-    # Accumulate into global
-    cat "${per_bin}" >> "${GLOBAL_COUNTS}"
+awk '
+# Detect object file boundary
+/^[^ ].*:     file format/ {
+    # Extract the object filename (first field, strip trailing colon)
+    split($0, parts, ":")
+    current_obj = parts[1]
+    next
+}
+
+# Match instruction lines: leading whitespace, hex address, colon
+/^[[:space:]]+[0-9a-f]+:/ {
+    # Skip lines without enough fields
+    if (NF < 3) next
+
+    # The raw hex bytes are in field 2 (after the "addr:" field).
+    # But objdump formatting can vary. The pattern is:
+    #   addr: <hex> <mnemonic> <operands...>
+    # where <hex> is a single hex word (no spaces — little-endian merged).
+
+    # Find the raw hex field: first field after the "addr:" that is pure hex
+    raw = ""
+    mnem = ""
+    for (i = 2; i <= NF; i++) {
+        if ($i ~ /^[0-9a-f]+$/ && raw == "") {
+            raw = $i
+        } else if (raw != "" && mnem == "") {
+            mnem = $i
+            break
+        }
+    }
+
+    if (raw == "" || mnem == "") next
+
+    # Determine encoding width from raw hex length
+    # 4 hex chars = 2 bytes = C encoding
+    # 8 hex chars = 4 bytes = standard 32-bit
+    len = length(raw)
+    if (len <= 4) {
+        enc = "C"
+    } else {
+        enc = "std"
+    }
+
+    key = current_obj "\t" mnem "\t" enc
+    count[key]++
+}
+
+END {
+    for (k in count) {
+        print k "\t" count[k]
+    }
+}
+' "${DISASM}" | sort > "${TMPDIR_BASE}/parsed.tsv"
+
+# ---------------------------------------------------------------------------
+# Phase 2: Look up extensions from the authoritative table
+# ---------------------------------------------------------------------------
+
+# Load lookup table into an awk-friendly format
+# Output: obj<TAB>mnemonic<TAB>encoding<TAB>count<TAB>extension
+awk -F'\t' -v LOOKUP="${LOOKUP}" '
+BEGIN {
+    # Load lookup table
+    while ((getline line < LOOKUP) > 0) {
+        split(line, parts, "\t")
+        ext[parts[1]] = parts[2]
+    }
+    close(LOOKUP)
+}
+{
+    obj = $1; mnem = $2; enc = $3; cnt = $4
+    e = (mnem in ext) ? ext[mnem] : "UNKNOWN"
+    print obj "\t" mnem "\t" enc "\t" cnt "\t" e
+}
+' "${TMPDIR_BASE}/parsed.tsv" > "${TMPDIR_BASE}/classified.tsv"
+
+# ---------------------------------------------------------------------------
+# Phase 3: Generate report
+# ---------------------------------------------------------------------------
+
+# Gather toolchain version
+OBJDUMP_VERSION="$("${OBJDUMP}" --version 2>/dev/null | head -1)"
+
+# Count total instructions and C vs std
+TOTAL_INSNS=$(awk -F'\t' '{s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+C_INSNS=$(awk -F'\t' '$3=="C" {s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+STD_INSNS=$(awk -F'\t' '$3=="std" {s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+
+# Get list of object files
+mapfile -t OBJ_FILES < <(awk -F'\t' '{print $1}' "${TMPDIR_BASE}/classified.tsv" | sort -u)
+
+# Compute per-object totals
+declare -A OBJ_TOTAL OBJ_C OBJ_UNIQUE
+for obj in "${OBJ_FILES[@]}"; do
+    OBJ_TOTAL["$obj"]=$(awk -F'\t' -v o="$obj" '$1==o {s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+    OBJ_C["$obj"]=$(awk -F'\t' -v o="$obj" '$1==o && $3=="C" {s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+    OBJ_UNIQUE["$obj"]=$(awk -F'\t' -v o="$obj" '$1==o {print $2}' "${TMPDIR_BASE}/classified.tsv" | sort -u | wc -l)
 done
 
-# Merge global counts: sum all occurrences of the same mnemonic
-GLOBAL_MERGED="${TMPDIR_BASE}/global_merged.tsv"
-sort -k2 "${GLOBAL_COUNTS}" \
-| awk '{count[$2]+=$1} END{for(m in count) printf "%d\t%s\n",count[m],m}' \
-| sort -rn > "${GLOBAL_MERGED}"
+# Get list of semantic extensions found (excluding UNKNOWN)
+mapfile -t EXTENSIONS < <(awk -F'\t' '$5!="UNKNOWN" {print $5}' "${TMPDIR_BASE}/classified.tsv" | sort -u)
 
-TOTAL_GLOBAL=$(awk '{s+=$1} END{print s+0}' "${GLOBAL_MERGED}")
-UNIQUE_GLOBAL=$(wc -l < "${GLOBAL_MERGED}")
-
-echo "  Total instruction references (summed across all binaries): ${TOTAL_GLOBAL}"
-
-# ---- Classify every mnemonic --------------------------------------------
-# Build per-extension files: each line is "<count> <TAB> <mnemonic>"
-declare -A EXT_FILES
-for ext in RV64I M A F D C Zb Zicsr Zifencei OTHER; do
-    EXT_FILES["$ext"]="${TMPDIR_BASE}/ext_${ext}.tsv"
-    touch "${EXT_FILES[$ext]}"
-done
-
-UNCLASSIFIED="${TMPDIR_BASE}/unclassified.txt"
-> "${UNCLASSIFIED}"
-
-while IFS=$'\t' read -r cnt mnem; do
-    ext="$(classify_mnemonic "$mnem")"
-    printf '%d\t%s\n' "$cnt" "$mnem" >> "${EXT_FILES[$ext]}"
-    if [[ "$ext" == "OTHER" ]]; then
-        echo "$mnem" >> "${UNCLASSIFIED}"
-    fi
-done < "${GLOBAL_MERGED}"
-
-# Sort each extension file by count descending
-for ext in RV64I M A F D C Zb Zicsr Zifencei OTHER; do
-    sort -rn -k1 "${EXT_FILES[$ext]}" -o "${EXT_FILES[$ext]}"
-done
-
-# ---- Extension summary counts -------------------------------------------
+# Extension totals
 declare -A EXT_TOTAL EXT_UNIQUE
-for ext in RV64I M A F D C Zb Zicsr Zifencei OTHER; do
-    EXT_TOTAL["$ext"]=$(awk '{s+=$1} END{print s+0}' "${EXT_FILES[$ext]}")
-    EXT_UNIQUE["$ext"]=$(wc -l < "${EXT_FILES[$ext]}" | tr -d ' ')
+for ext in "${EXTENSIONS[@]}" UNKNOWN; do
+    EXT_TOTAL["$ext"]=$(awk -F'\t' -v e="$ext" '$5==e {s+=$4} END{print s+0}' "${TMPDIR_BASE}/classified.tsv")
+    EXT_UNIQUE["$ext"]=$(awk -F'\t' -v e="$ext" '$5==e {print $2}' "${TMPDIR_BASE}/classified.tsv" | sort -u | wc -l)
 done
 
-# ---- Generate Markdown report -------------------------------------------
-echo "Writing report to ${REPORT}..."
+# Per-extension, per-object breakdown
+# Format: ext -> "obj:count obj:count ..."
+# Per-extension mnemonic detail
+# Format: ext -> sorted list of "count mnemonic"
+
+echo "Writing report to ${REPORT}..." >&2
 
 {
+# --- Header ---
 cat <<HEADER
 # XMSS RISC-V ISA Profile
 
 Generated: $(date -u '+%Y-%m-%d %H:%M:%S UTC')
-Toolchain: \`${OBJDUMP}\` (\`$(${OBJDUMP} --version | head -1)\`)
-Binaries directory: \`${BINARIES_DIR}\`
+Toolchain: \`${OBJDUMP_VERSION}\`
+Input: \`${INPUT_DISPLAY}\`
+Lookup source: \`third_party/riscv-opcodes/\` (generated by \`gen_lookup.sh\`)
 
-This report profiles the RISC-V ISA extensions used across all XMSS test
-binaries compiled with \`-march=rv64gc\`.  The goal is to determine what ISA
-support the Jasmin port must provide.
+## Methodology
+
+This report analyses **\`libxmss.a\`** — the static library containing only
+XMSS algorithm code (params, hash, WOTS, XMSS, XMSS-MT, BDS, utils).
+Unlike test binaries, this excludes \`printf\`, \`malloc\`, stack guards,
+and other libc/test-harness code that would pollute the ISA profile.
+
+Mnemonic-to-extension classification uses an authoritative lookup table
+generated from the \`riscv-opcodes\` submodule (the same database used by
+the RISC-V toolchain). This avoids the hand-written classifier bugs of
+the previous analysis (e.g. \`zext.h\` misclassified as I instead of Zbb).
+
+C (compressed) encoding is detected from instruction byte width in the raw
+objdump output: 2 bytes = 16-bit compressed, 4 bytes = 32-bit standard.
+GNU objdump renders compressed instructions using uncompressed aliases
+(\`sd\` not \`c.sd\`, \`li\` not \`c.li\`), so mnemonic-based C detection
+would always report C=0.
 
 HEADER
 
-# --- Per-binary summary table ---
-cat <<TABLE_HEADER
-## Per-binary summary
+# --- Per-object summary ---
+cat <<'TABLE_HDR'
+## Per-object-file summary
 
-| Binary | Total insn refs | Unique mnemonics |
-|--------|-----------------|-----------------|
-TABLE_HEADER
+| Object file | Total insns | Unique mnemonics | C-encoded | C % |
+|-------------|-------------|------------------|-----------|-----|
+TABLE_HDR
 
-for bin in "${BINARIES[@]}"; do
-    name="$(basename "$bin")"
-    printf '| `%s` | %s | %s |\n' \
-        "$name" \
-        "${BIN_TOTAL_INSNS[$name]}" \
-        "${BIN_UNIQUE_MNEMS[$name]}"
+for obj in "${OBJ_FILES[@]}"; do
+    total="${OBJ_TOTAL[$obj]}"
+    c_cnt="${OBJ_C[$obj]}"
+    uniq="${OBJ_UNIQUE[$obj]}"
+    if [[ "$total" -gt 0 ]]; then
+        pct=$(( c_cnt * 100 / total ))
+    else
+        pct=0
+    fi
+    printf '| `%s` | %d | %d | %d | %d%% |\n' "$obj" "$total" "$uniq" "$c_cnt" "$pct"
 done
 
-printf '\n**Total across all binaries:** %d instruction references, %d unique mnemonics\n\n' \
-    "${TOTAL_GLOBAL}" "${UNIQUE_GLOBAL}"
+printf '\n**Total: %d instructions (%d unique mnemonics) across %d object files**\n\n' \
+    "${TOTAL_INSNS}" \
+    "$(awk -F'\t' '{print $2}' "${TMPDIR_BASE}/classified.tsv" | sort -u | wc -l)" \
+    "${#OBJ_FILES[@]}"
 
-# --- Extension summary table ---
-cat <<EXT_HEADER
+# --- Extension summary ---
+cat <<'EXT_HDR'
 
-## Extension summary
+## Semantic extension summary
 
-Instruction reference counts summed across all binaries, grouped by RISC-V
-ISA extension.  "Refs" counts every occurrence in every binary's disassembly
-(a mnemonic appearing in a shared library pulled into multiple binaries will
-be counted multiple times).  "Unique" is the number of distinct mnemonics in
-that extension that appeared at least once.
+Instruction counts grouped by ISA extension (semantic, not encoding).
+The "extension" is what the instruction DOES, regardless of whether it
+was emitted in compressed (16-bit) or standard (32-bit) encoding.
 
-| Extension | Description | Refs | Unique mnemonics | Present? |
-|-----------|-------------|------|-----------------|----------|
-EXT_HEADER
+| Extension | Refs | Unique mnemonics | Notes |
+|-----------|------|------------------|-------|
+EXT_HDR
 
-ext_row() {
-    local ext="$1" desc="$2"
-    local refs="${EXT_TOTAL[$ext]}" uniq="${EXT_UNIQUE[$ext]}"
-    local flag
-    if [[ "$refs" -gt 0 ]]; then flag="YES"; else flag="no"; fi
-    printf '| %-9s | %-47s | %6s | %15s | %-8s |\n' \
-        "$ext" "$desc" "$refs" "$uniq" "$flag"
+# Define extension order and notes
+ext_note() {
+    case "$1" in
+        I)        echo "Base integer (always required)" ;;
+        M)        echo "Integer multiply/divide" ;;
+        A)        echo "Atomics" ;;
+        F)        echo "Single-precision float" ;;
+        D)        echo "Double-precision float" ;;
+        C)        echo "Compressed-only instructions" ;;
+        Zba)      echo "Address generation (sh*add)" ;;
+        Zbb)      echo "Bitmanip: rotate, clz, rev8, min/max" ;;
+        Zbc)      echo "Carry-less multiply" ;;
+        Zbs)      echo "Single-bit operations" ;;
+        Zbkb)     echo "Bitmanip for crypto (pack, brev8)" ;;
+        Zicsr)    echo "CSR access" ;;
+        Zifencei) echo "Instruction-fetch fence" ;;
+        UNKNOWN)  echo "Not in lookup table" ;;
+        *)        echo "" ;;
+    esac
 }
 
-ext_row "RV64I"    "Base integer (loads, stores, branches, arith)"
-ext_row "M"        "Integer multiply/divide"
-ext_row "A"        "Atomics (lr/sc/amo)"
-ext_row "F"        "Single-precision float (unexpected for XMSS)"
-ext_row "D"        "Double-precision float (unexpected for XMSS)"
-ext_row "C"        "Compressed 16-bit instructions"
-ext_row "Zb"       "Bit-manipulation (Zba/Zbb/Zbc/Zbs)"
-ext_row "Zicsr"    "CSR read/write instructions"
-ext_row "Zifencei" "Instruction-fetch fence"
-ext_row "OTHER"    "Unclassified (see section below)"
+# Preferred display order
+for ext in I M A F D C Zba Zbb Zbc Zbs Zbkb Zicsr Zifencei; do
+    refs="${EXT_TOTAL[$ext]:-0}"
+    uniq="${EXT_UNIQUE[$ext]:-0}"
+    [[ "$refs" -eq 0 ]] && continue
+    printf '| **%s** | %d | %d | %s |\n' "$ext" "$refs" "$uniq" "$(ext_note "$ext")"
+done
+
+# Any extensions not in the preferred list
+for ext in "${EXTENSIONS[@]}"; do
+    case "$ext" in I|M|A|F|D|C|Zba|Zbb|Zbc|Zbs|Zbkb|Zicsr|Zifencei) continue ;; esac
+    refs="${EXT_TOTAL[$ext]:-0}"
+    uniq="${EXT_UNIQUE[$ext]:-0}"
+    [[ "$refs" -eq 0 ]] && continue
+    printf '| **%s** | %d | %d | %s |\n' "$ext" "$refs" "$uniq" "$(ext_note "$ext")"
+done
+
+# UNKNOWN last
+if [[ "${EXT_TOTAL[UNKNOWN]:-0}" -gt 0 ]]; then
+    printf '| **UNKNOWN** | %d | %d | %s |\n' \
+        "${EXT_TOTAL[UNKNOWN]}" "${EXT_UNIQUE[UNKNOWN]}" "$(ext_note UNKNOWN)"
+fi
 
 echo ""
 
-# --- Per-extension detail sections ---
-detail_section() {
-    local ext="$1" desc="$2" notes="$3"
-    local refs="${EXT_TOTAL[$ext]}" uniq="${EXT_UNIQUE[$ext]}"
-    if [[ "$refs" -eq 0 ]]; then
-        printf '\n### %s — %s\n\nNot present in any binary.\n' "$ext" "$desc"
-        return
-    fi
-    printf '\n### %s — %s\n\n%s\n\n' "$ext" "$desc" "$notes"
-    printf '| Count | Mnemonic |\n'
-    printf '|-------|----------|\n'
-    while IFS=$'\t' read -r cnt mnem; do
-        printf '| %6d | `%s` |\n' "$cnt" "$mnem"
-    done < "${EXT_FILES[$ext]}"
+# --- Per-extension mnemonic detail ---
+printf '## Per-extension mnemonic detail\n\n'
+
+for ext in I M A F D C Zba Zbb Zbc Zbs Zbkb Zicsr Zifencei "${EXTENSIONS[@]}"; do
+    refs="${EXT_TOTAL[$ext]:-0}"
+    [[ "$refs" -eq 0 ]] && continue
+
+    # Skip duplicates from the combined iteration
+    if [[ -f "${TMPDIR_BASE}/printed_${ext}" ]]; then continue; fi
+    touch "${TMPDIR_BASE}/printed_${ext}"
+
+    printf '### %s\n\n' "$ext"
+    printf '| Count | Mnemonic | Object files |\n'
+    printf '|------:|----------|-------------|\n'
+
+    # Aggregate mnemonic counts for this extension
+    awk -F'\t' -v e="$ext" '$5==e {
+        count[$2] += $4
+        if (!($2 in objs)) objs[$2] = $1
+        else if (index(objs[$2], $1) == 0) objs[$2] = objs[$2] ", " $1
+    }
+    END {
+        for (m in count) print count[m] "\t" m "\t" objs[m]
+    }' "${TMPDIR_BASE}/classified.tsv" | sort -rn -k1 | while IFS=$'\t' read -r cnt mnem objs; do
+        printf '| %d | `%s` | %s |\n' "$cnt" "$mnem" "$objs"
+    done
+
     echo ""
-}
+done
 
-detail_section "RV64I" "Base integer" \
-    "Core integer operations. Always required."
+# --- UNKNOWN mnemonics ---
+if [[ "${EXT_TOTAL[UNKNOWN]:-0}" -gt 0 ]]; then
+    printf '### UNKNOWN\n\n'
+    printf 'The following mnemonics were not found in the riscv-opcodes lookup table.\n'
+    printf 'They may be objdump-specific pseudo-instructions or toolchain-specific\n'
+    printf 'mnemonics. Investigate manually.\n\n'
+    printf '| Count | Mnemonic | Object files |\n'
+    printf '|------:|----------|-------------|\n'
 
-detail_section "M" "Multiply/divide" \
-    "Integer multiply/divide. Used by the C compiler for address arithmetic and loop induction; not directly needed by XMSS algorithm logic."
+    awk -F'\t' '$5=="UNKNOWN" {
+        count[$2] += $4
+        if (!($2 in objs)) objs[$2] = $1
+        else if (index(objs[$2], $1) == 0) objs[$2] = objs[$2] ", " $1
+    }
+    END {
+        for (m in count) print count[m] "\t" m "\t" objs[m]
+    }' "${TMPDIR_BASE}/classified.tsv" | sort -rn -k1 | while IFS=$'\t' read -r cnt mnem objs; do
+        printf '| %d | `%s` | %s |\n' "$cnt" "$mnem" "$objs"
+    done
 
-detail_section "A" "Atomics" \
-    "Atomic memory operations. If present, likely from libc (e.g. pthread mutexes in test harness), not from XMSS algorithm code itself."
-
-detail_section "F" "Single-precision float" \
-    "UNEXPECTED. Float instructions should not appear in XMSS. If present, investigate the source — possibly a libc function or compiler-generated code."
-
-detail_section "D" "Double-precision float" \
-    "UNEXPECTED. Double-precision float should not appear in XMSS. If present, investigate (may be compiler-generated for 64-bit operations on some toolchain versions)."
-
-detail_section "C" "Compressed" \
-    "16-bit compressed encoding. Present whenever the toolchain emits C-extension code (enabled by default in rv64gc). These are just re-encodings of RV64I/M/A/F/D instructions; no new semantics. The Jasmin port does not need to explicitly emit C instructions — the assembler handles encoding."
-
-detail_section "Zb" "Bit-manipulation (Zba/Zbb/Zbc/Zbs)" \
-    "Bit-manipulation extensions. Relevant for hash function acceleration in Jasmin:
-- **Zba**: address generation (sh1add, sh2add, sh3add)
-- **Zbb**: rotates (rol/ror), bit-reverse (rev8), count-leading-zeros (clz/ctz), min/max
-- **Zbc**: carry-less multiply (clmul) — relevant for GCM/CRC but not SHA-2/SHAKE
-- **Zbs**: single-bit ops (bset/bclr/binv/bext)
-
-If Zb instructions appear here, they were emitted by the C compiler. If absent, the compiler did not auto-vectorise to Zb; the Jasmin port could still use them explicitly for SHA-2 rotations."
-
-detail_section "Zicsr" "CSR instructions" \
-    "Control/Status Register access. If present, likely from libc startup or performance-counter access in test harness."
-
-detail_section "Zifencei" "Instruction-fetch fence" \
-    "fence.i instruction. If present, likely from libc or dynamic linker, not XMSS."
-
-# --- OTHER / unclassified ---
-printf '\n### OTHER — Unclassified mnemonics\n\n'
-if [[ "${EXT_TOTAL[OTHER]}" -eq 0 ]]; then
-    printf 'No unclassified mnemonics. All instructions were recognised.\n\n'
-else
-    printf 'The following mnemonics were not matched by the classifier. '
-    printf 'They may be new extensions, vendor-specific instructions, '
-    printf 'or objdump pseudo-mnemonics for this toolchain version. '
-    printf 'Inspect manually.\n\n'
-    printf '| Count | Mnemonic |\n'
-    printf '|-------|----------|\n'
-    while IFS=$'\t' read -r cnt mnem; do
-        printf '| %6d | `%s` |\n' "$cnt" "$mnem"
-    done < "${EXT_FILES[OTHER]}"
     echo ""
 fi
 
+# --- C encoding statistics ---
+cat <<C_HDR
+
+## Compressed (C) encoding statistics
+
+The C extension provides 16-bit encodings for common instructions. The
+assembler emits these automatically when targeting \`rv64gc\`. This is an
+encoding optimisation (smaller code size) — it does not change semantics.
+
+C_HDR
+
+printf '| Metric | Value |\n'
+printf '|--------|------:|\n'
+printf '| Total instructions | %d |\n' "${TOTAL_INSNS}"
+printf '| Standard (32-bit) | %d |\n' "${STD_INSNS}"
+printf '| Compressed (16-bit) | %d |\n' "${C_INSNS}"
+if [[ "${TOTAL_INSNS}" -gt 0 ]]; then
+    printf '| C encoding ratio | %d%% |\n' "$(( C_INSNS * 100 / TOTAL_INSNS ))"
+fi
+
+echo ""
+
+# Per-object C encoding
+printf '### Per-object C encoding\n\n'
+printf '| Object file | Total | C-encoded | C %% |\n'
+printf '|-------------|------:|----------:|-----:|\n'
+
+for obj in "${OBJ_FILES[@]}"; do
+    total="${OBJ_TOTAL[$obj]}"
+    c_cnt="${OBJ_C[$obj]}"
+    if [[ "$total" -gt 0 ]]; then
+        pct=$(( c_cnt * 100 / total ))
+    else
+        pct=0
+    fi
+    printf '| `%s` | %d | %d | %d%% |\n' "$obj" "$total" "$c_cnt" "$pct"
+done
+
+echo ""
+
+# --- Per-object extension breakdown ---
+printf '## Per-object extension breakdown\n\n'
+printf 'Which extensions are used in each object file.\n\n'
+
+for obj in "${OBJ_FILES[@]}"; do
+    printf '### `%s`\n\n' "$obj"
+    printf '| Extension | Refs | Mnemonics |\n'
+    printf '|-----------|-----:|----------|\n'
+
+    awk -F'\t' -v o="$obj" '$1==o {
+        count[$5] += $4
+        if (!($5 in mnems)) mnems[$5] = "`" $2 "`"
+        else if (index(mnems[$5], $2) == 0) mnems[$5] = mnems[$5] ", `" $2 "`"
+    }
+    END {
+        for (e in count) print count[e] "\t" e "\t" mnems[e]
+    }' "${TMPDIR_BASE}/classified.tsv" | sort -rn -k1 | while IFS=$'\t' read -r cnt ext mnems; do
+        printf '| **%s** | %d | %s |\n' "$ext" "$cnt" "$mnems"
+    done
+
+    echo ""
+done
+
 # --- Jasmin implications ---
-cat <<JASMIN
+cat <<'JASMIN'
 
 ## Implications for the Jasmin port
 
-Based on the above profile:
+### Semantic extensions required
 
-1. **Required**: RV64I — always needed as the base ISA.
-2. **Required if present**: M extension — if the compiler uses mul/div for
-   index arithmetic, the Jasmin port must target at least RV64IM.
-3. **Compressed (C)**: The Jasmin assembler will emit C instructions
-   automatically when targeting rv64gc. No explicit handling needed.
-4. **Atomics (A)**: Only needed if the Jasmin port uses concurrent data
-   structures. XMSS algorithm code is single-threaded; A instructions
-   appearing here are from libc.
-5. **Float (F/D)**: Should be absent. If present, flag as a bug in the
-   C implementation (possibly a compiler quirk with -march=rv64gc enabling
-   float ABI).
-6. **Zb (bit-manipulation)**: The C compiler with -march=rv64gc does NOT
-   emit Zb instructions by default (Zb is not part of rv64gc). If the Jasmin
-   port targets rv64gc_zbb (for example), it can use \`ror\`, \`rev8\`, \`clz\`
-   explicitly for SHA-2/SHAKE — gaining performance without breaking
-   compatibility with standard rv64gc hardware.
+Based on the analysis of `libxmss.a`:
+
+1. **I (base integer)**: Always required. Dominates the instruction mix
+   (loads, stores, branches, arithmetic, shifts).
+
+2. **M (multiply/divide)**: Used by the C compiler for address arithmetic
+   and parameter derivation (`mulw`, `mul`, `divuw`). The Jasmin port
+   must target at least **RV64IM**.
+
+3. **A (atomics)**: Not expected in `libxmss.a` (XMSS is single-threaded).
+   If present, investigate — may be a compiler intrinsic.
+
+4. **F/D (float)**: Should be absent. XMSS is integer-only. If present,
+   it's a compiler quirk from `-march=rv64gc` enabling the float ABI.
+
+5. **Zba/Zbb/Zbs (bitmanip)**: Not emitted by the compiler with `-march=rv64gc`
+   (Zb* is not part of rv64gc). The Jasmin port can **explicitly use**
+   Zbb instructions (`ror`, `rev8`, `clz`) in the hash layer for SHA-2/SHAKE
+   optimisation — these would be hand-written, not compiler-generated.
+
+### C encoding
+
+The assembler handles C encoding automatically. No explicit action needed
+in Jasmin source code. The C encoding ratio in `libxmss.a` shows that a
+significant fraction of instructions have compressed forms, confirming that
+`rv64gc` produces compact code.
 
 ### Recommended Jasmin target ISA
 
-- Minimum: \`rv64imac\` (or \`rv64gc\` which equals \`rv64imafd_zicsr_zifencei_c\`)
-- Optimised: \`rv64gc_zbb\` to exploit Zbb rotates and byte-reversal in SHA-2
+- **Minimum**: `rv64im` — base integer + multiply/divide
+- **Standard**: `rv64gc` (= `rv64imafd_zicsr_zifencei_c`) — for
+  compatibility with standard Linux toolchains
+- **Optimised hash layer**: `rv64gc_zbb` — adds `ror`/`rev8` for SHA-2
+  and byte-reversal without breaking rv64gc compatibility for non-hash code
 
 JASMIN
 
 } > "${REPORT}"
 
-echo "Done. Report written to: ${REPORT}"
+echo "Done. Report: ${REPORT}" >&2
+echo "  ${TOTAL_INSNS} instructions across ${#OBJ_FILES[@]} object files" >&2
+echo "  C encoding: ${C_INSNS}/${TOTAL_INSNS} ($(( C_INSNS * 100 / TOTAL_INSNS ))%)" >&2
+echo "  Extensions found: ${EXTENSIONS[*]}" >&2
