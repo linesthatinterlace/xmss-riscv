@@ -52,9 +52,7 @@ treehash, BDS state management, XMSS signing/verification, and XMSS-MT.
 This comprises 13 object files.
 
 Crucially, the library excludes \texttt{printf}, \texttt{malloc}, stack
-guards, and other libc/test-harness code.  Analysing test binaries (the
-approach of a previous iteration) would have included hundreds of libc
-instructions that have nothing to do with XMSS.
+guards, and other libc/test-harness code that would pollute the profile.
 
 \subsection{Toolchain}
 
