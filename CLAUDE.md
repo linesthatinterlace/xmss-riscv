@@ -7,6 +7,7 @@ Multi-implementation XMSS/XMSS-MT project (RFC 8391).
 Read the CLAUDE.md in the relevant implementation directory for build commands, architecture details, and coding rules.
 
 - **C implementation** (`impl/c/`): Complete C99 reference. See `impl/c/CLAUDE.md` for build commands, architecture, Jasmin portability rules, and test structure.
+- **Rust implementation** (`impl/rust/`): Planned. See `impl/rust/CLAUDE.md` for build commands, architecture, and Rust-specific rules.
 - **Jasmin implementation** (`impl/jasmin/`): Planned. Will target RISC-V 64-bit verified assembly.
 
 ## Shared resources
