@@ -123,3 +123,8 @@ These are enforced and must not be broken by any change:
 ## Dependencies
 
 None at runtime. Build requires CMake >= 3.16 and a C99 compiler.
+
+## Future work
+
+- **Remaining-signatures query**: Sign functions return exhaustion errors but there is no function to query how many signatures remain.
+- **XMSS-MT KAT**: Cross-validation against xmss-reference for XMSS-MT parameter sets (the reference embeds BDS state in the SK buffer, so byte-level comparison requires a translation layer).
