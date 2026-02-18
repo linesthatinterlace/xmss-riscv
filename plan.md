@@ -8,8 +8,8 @@ Move the C implementation out of the repo root into a subdirectory so that futur
 
 ```
 xmss-jasmin/
-├── CLAUDE.md                   # Updated for new paths
-├── README.md                   # Rewritten: project overview only
+├── CLAUDE.md                   # Project-level: orientation + routing for agents
+├── README.md                   # Project-level: overview for humans
 ├── .gitignore                  # Updated for new build dir locations
 ├── .gitmodules                 # Unchanged
 ├── doc/
@@ -18,8 +18,9 @@ xmss-jasmin/
 │   └── xmss-reference/         # Stays at root (shared reference)
 └── impl/
     └── c/
+        ├── CLAUDE.md           # NEW: C-specific agent context (architecture, rules, tests)
         ├── CMakeLists.txt      # Moved (no path changes needed)
-        ├── Makefile            # Moved + updated (build dirs now relative to impl/c/)
+        ├── Makefile            # Moved (unchanged — co-located with CMakeLists.txt)
         ├── README.md           # NEW: C-specific build/API/errata docs
         ├── cmake/
         │   └── toolchain-riscv64.cmake
@@ -50,7 +51,7 @@ xmss-jasmin/
             └── test_*.c         # All 11 test files
 ```
 
-Future implementations would be added as `impl/jasmin/`, `impl/rust/`, etc.
+Future implementations would be added as `impl/jasmin/`, `impl/rust/`, etc., each with their own CLAUDE.md and README.md.
 
 ## Rationale
 
@@ -58,6 +59,37 @@ Future implementations would be added as `impl/jasmin/`, `impl/rust/`, etc.
 - **`doc/` and `third_party/` stay at root**: The RFC and reference implementation are shared resources used by all implementations, not C-specific.
 - **No top-level Makefile**: Each implementation owns its own build system. With multiple implementations, a global Makefile that picks a default or grows per-impl targets would be confusing. Users `cd impl/c && make` — clear and unsurprising.
 - **Per-implementation README**: Each `impl/X/` has its own README with build instructions, API docs, and implementation-specific details. The top-level README is a project overview with pointers into each implementation.
+- **Per-implementation CLAUDE.md**: Each `impl/X/` has its own CLAUDE.md with architecture details, coding rules, file descriptions, build commands, and test structure. The top-level CLAUDE.md is a dispatcher that orients agents and routes them to the right implementation's context.
+
+## CLAUDE.md split
+
+### Top-level `CLAUDE.md` — agent dispatcher
+
+Purpose: orient any agent landing in the repo, regardless of which implementation they're working on. Contents:
+
+1. **What this repo is**: Multi-implementation XMSS/XMSS-MT project (one-liner).
+2. **Implementation routing table**: Explicit instructions like:
+   - "If you are working on the C implementation, read `impl/c/CLAUDE.md` for build commands, architecture, and coding rules."
+   - "If you are working on Jasmin, read `impl/jasmin/CLAUDE.md`."
+   - etc.
+3. **Shared resources**: What lives at the root and why — `doc/rfc8391.txt` (the spec), `third_party/xmss-reference/` (read-only algorithmic reference).
+4. **Cross-cutting rules**: Things that apply to ALL implementations regardless of language:
+   - Do NOT copy code from `third_party/xmss-reference/` — use it only as an algorithmic reference, then reimplement.
+   - All implementations target RFC 8391 (including Errata 7900).
+   - Constant-time requirements for secret-dependent operations.
+5. **Future work**: Project-level items (remaining-signatures query, XMSS-MT KAT, etc.).
+
+### `impl/c/CLAUDE.md` — C implementation context
+
+Purpose: everything an agent needs to work on the C code. This is essentially the current CLAUDE.md with paths made relative to `impl/c/`. Contents:
+
+1. **Build commands**: `make`, `make test`, `make test-fast`, `make debug`, `make rv`, direct test binary paths.
+2. **Architecture**: Hash abstraction boundary, no-malloc policy, key constants, ADRS structure, SK/PK layout, `xmss_PRF_idx`.
+3. **Jasmin portability rules (J1–J8)**: These are enforced constraints on the C code specifically.
+4. **Test structure**: All test binaries, what they test, fast vs. slow labels.
+5. **Dependencies**: CMake >= 3.16, C99 compiler, no runtime deps.
+
+All file paths in this document are relative to `impl/c/` (e.g., `src/hash/xmss_hash.c`, not `impl/c/src/hash/xmss_hash.c`) since the agent will be working within that subtree.
 
 ## Step-by-step Changes
 
@@ -75,58 +107,17 @@ git mv CMakeLists.txt impl/c/CMakeLists.txt
 git mv Makefile impl/c/Makefile
 ```
 
-### Step 2: Update `impl/c/Makefile`
+### Step 2: Verify `impl/c/Makefile` needs no changes
 
-The Makefile now lives inside `impl/c/`, so build directories should be relative to that location. Update all paths:
+The Makefile content is unchanged from the original — since it's now co-located with CMakeLists.txt, all the relative paths still work. Build directories (`build-rel/` etc.) will now appear under `impl/c/` rather than the repo root.
 
-```makefile
-BUILD     := build-rel
-BUILD_DBG := build
-BUILD_RV  := build-rv
+### Step 3: Verify `impl/c/CMakeLists.txt` and `impl/c/test/CMakeLists.txt` need no changes
 
-.PHONY: all debug test test-fast clean rv help
-
-all:
-	cmake -B $(BUILD) -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(BUILD)
-
-debug:
-	cmake -B $(BUILD_DBG) -DCMAKE_BUILD_TYPE=Debug
-	cmake --build $(BUILD_DBG)
-
-test: all
-	ctest --test-dir $(BUILD) --output-on-failure
-
-test-fast: all
-	ctest --test-dir $(BUILD) --output-on-failure -L fast
-
-rv:
-	cmake -B $(BUILD_RV) -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake \
-	    -DCMAKE_BUILD_TYPE=Release
-	cmake --build $(BUILD_RV)
-
-clean:
-	rm -rf $(BUILD) $(BUILD_DBG) $(BUILD_RV)
-
-help:
-	@echo "Available targets:"
-	@echo "  make            Release build"
-	@echo "  make test       Build + run all tests"
-	@echo "  make test-fast  Build + run fast tests only"
-	@echo "  make debug      Debug build with ASan + UBSan"
-	@echo "  make rv         RISC-V cross-compile"
-	@echo "  make clean      Remove all build directories"
-```
-
-The Makefile content is actually unchanged from the original — since it's now co-located with CMakeLists.txt, all the relative paths still work. Build directories (`build-rel/` etc.) will now appear under `impl/c/` rather than the repo root.
-
-### Step 3: Update `impl/c/CMakeLists.txt` and `impl/c/test/CMakeLists.txt`
-
-No path changes needed inside either file. All paths use `${CMAKE_SOURCE_DIR}` which will resolve to `impl/c/` whether CMake is invoked from there directly or via `-S impl/c`.
+All paths use `${CMAKE_SOURCE_DIR}` which will resolve to `impl/c/` whether CMake is invoked from there directly or via `-S impl/c`. No changes needed.
 
 ### Step 4: Update `.gitignore`
 
-Update to account for build dirs now living under `impl/c/`:
+Update to account for build dirs now living under `impl/c/` (and future impl dirs):
 
 ```gitignore
 # Build directories (per-implementation)
@@ -152,7 +143,7 @@ Move the C-specific content from the current top-level README into this file:
 - Building section (make targets, CMake direct invocation, RISC-V cross-compile)
 - Parameter set tables (all 12 XMSS + 32 XMSS-MT)
 - API usage examples (XMSS and XMSS-MT)
-- Repository structure (relative to `impl/c/`)
+- Directory structure (relative to `impl/c/`)
 - Jasmin portability rules table
 - Errata note
 - Licence
@@ -168,21 +159,15 @@ Slim it down to a project overview:
 - Links to each implementation's README
 - Licence
 
-### Step 7: Update `CLAUDE.md`
+### Step 7: Create `impl/c/CLAUDE.md`
 
-Changes needed:
+Move all C-specific content from the current top-level CLAUDE.md here. Keep file paths relative to `impl/c/` (not the repo root) since agents working on C will be operating in that subtree. Contents as described in the "CLAUDE.md split" section above.
 
-1. **Build commands section**: Update paths — users now `cd impl/c` first. Direct binary paths become `./impl/c/build-rel/test/test_params` etc. RISC-V example updated similarly.
-2. **Architecture section**: Update all file path references to include `impl/c/` prefix:
-   - `src/hash/xmss_hash.c` → `impl/c/src/hash/xmss_hash.c`
-   - `src/hash/hash_iface.h` → `impl/c/src/hash/hash_iface.h`
-   - `include/xmss/xmss.h` → `impl/c/include/xmss/xmss.h`
-   - etc. for all `src/` and `include/` references
-3. **Jasmin portability rules**: Clarify these apply to the C implementation (and will carry over to Jasmin).
-4. **Test structure**: Update binary paths to `./impl/c/build-rel/test/test_*`.
-5. **Dependencies**: Note that the C impl has no deps; future impls may differ.
+### Step 8: Rewrite top-level `CLAUDE.md`
 
-### Step 8: Verify the build
+Replace with the agent dispatcher document described in the "CLAUDE.md split" section above. Key design principle: an agent should be able to read this file and immediately know which implementation-specific CLAUDE.md to read next.
+
+### Step 9: Verify the build
 
 After all moves and edits:
 
