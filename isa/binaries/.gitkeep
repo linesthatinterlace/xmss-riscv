@@ -1,0 +1,4 @@
+# Placeholder — RISC-V ELF binaries will be copied here.
+# Copy from impl/c/build-rv/test/ after running:
+#   cd impl/c && make rv
+#   cp build-rv/test/test_* isa/binaries/
