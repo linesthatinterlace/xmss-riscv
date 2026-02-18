@@ -33,7 +33,14 @@ Check CI status: `gh run list` / `gh run view <id>` / `gh run watch <id>`
 
 Before extending Jasmin's RISC-V backend (or contributing to it upstream), we need to understand what instructions XMSS actually requires at the ISA level. The planned approach is to disassemble the RISC-V binaries already produced by `impl/c/` and analyse which instructions appear, which ISA extensions (B for bitmanip, V for vector, etc.) are used or would help, and where gaps in Jasmin's RISC-V backend would arise.
 
-This work draws from `impl/c/` but its output informs `impl/jasmin/`. Artifacts (scripts, reports) will live in `doc/` or a dedicated `analysis/` directory at the project root. See `impl/jasmin/CLAUDE.md` for more context.
+This work draws from `impl/c/` but its output informs `impl/jasmin/`. Artifacts live in `isa/` at the project root:
+
+- `isa/binaries/` — RISC-V ELF test binaries cross-compiled from `impl/c/` (riscv64-linux-gnu-gcc 13.3, `-march=rv64gc`)
+- `isa/scripts/analyse.sh` — disassembles binaries and classifies instructions by ISA extension
+- `isa/reports/xmss_rv64_isa_profile.md` — full results: XMSS is pure RV64I; Zbb (rotate/byte-swap) is absent but relevant for SHA-2 in the hash layer only
+- `isa/reports/.report-todo.md` — brief for converting the profile into a PDF report for Francois Dupressoir (clean technical report style; he knows Jasmin, needs XMSS+RISC-V motivation)
+
+See `impl/jasmin/CLAUDE.md` for how these findings affect the Jasmin port strategy.
 
 ## Cross-cutting rules
 
