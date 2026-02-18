@@ -73,15 +73,16 @@ static const kat_mt_vector_t mt_vectors[] = {
      * Fingerprint = SHAKE128(data, len) truncated to 10 bytes (hex).
      * Keygen seed: seed[i]=i for i=0..3n-1.
      * Message {37} signed at idx=4 (after 4 dummy signs).
+     * SHA-2/SHAKE × n=32/n=64, all with h=20, d=2.
      */
     { OID_XMSS_MT_SHA2_20_2_256,   "XMSSMT-SHA2_20/2_256",
       "bea144e05295be8f3242", "8cd2a3516ed88f5c186b" },
-    { OID_XMSS_MT_SHA2_20_4_256,   "XMSSMT-SHA2_20/4_256",
-      "9df4c75282451bf2bc53", "c8f43d9e01cf8e3800c3" },
+    { OID_XMSS_MT_SHA2_20_2_512,   "XMSSMT-SHA2_20/2_512",
+      "8493ea55e5fa1092939b", "300cef50b8f384167c4b" },
     { OID_XMSS_MT_SHAKE_20_2_256,  "XMSSMT-SHAKE_20/2_256",
       "4865cb2e057f1870aa91", "48b624a556a41efd8be4" },
-    { OID_XMSS_MT_SHAKE_20_4_256,  "XMSSMT-SHAKE_20/4_256",
-      "dbe6fc388fbd610b3401", "6dcff4761bf4e9989f73" },
+    { OID_XMSS_MT_SHAKE_20_2_512,  "XMSSMT-SHAKE_20/2_512",
+      "3f989355f685a6825333", "94f489046bfa60cd64c5" },
 };
 
 #define NUM_MT_VECTORS (sizeof(mt_vectors) / sizeof(mt_vectors[0]))
