@@ -34,3 +34,10 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+
+# QEMU emulator for CTest — allows `ctest` to run cross-compiled tests.
+find_program(QEMU_RISCV64 qemu-riscv64)
+if(QEMU_RISCV64)
+    set(CMAKE_CROSSCOMPILING_EMULATOR "${QEMU_RISCV64};-L;/usr/riscv64-linux-gnu"
+        CACHE STRING "Emulator for cross-compiled test binaries")
+endif()

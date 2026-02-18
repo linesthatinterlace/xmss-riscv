@@ -18,6 +18,11 @@ add_compile_options(
     -Wsign-conversion
 )
 
+option(XMSS_WERROR "Treat warnings as errors" OFF)
+if(XMSS_WERROR)
+    add_compile_options(-Werror)
+endif()
+
 # Debug build: sanitizers
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(NOT CMAKE_CROSSCOMPILING)

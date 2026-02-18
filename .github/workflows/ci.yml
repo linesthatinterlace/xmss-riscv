@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  native:
+    name: ${{ matrix.cc }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+    env:
+      CC: ${{ matrix.cc }}
+    defaults:
+      run:
+        working-directory: impl/c
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DXMSS_WERROR=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Fast tests
+        run: ctest --test-dir build --output-on-failure -L fast
+
+      - name: Full tests
+        run: ctest --test-dir build --output-on-failure
+
+  riscv:
+    name: riscv64
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: impl/c
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross qemu-user
+
+      - name: Configure
+        run: >
+          cmake -B build-rv
+          -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake
+          -DCMAKE_BUILD_TYPE=Release
+          -DXMSS_WERROR=ON
+
+      - name: Build
+        run: cmake --build build-rv
+
+      - name: Fast tests
+        run: ctest --test-dir build-rv --output-on-failure -L fast --timeout 120
+
+      - name: Full tests
+        run: ctest --test-dir build-rv --output-on-failure --timeout 900
