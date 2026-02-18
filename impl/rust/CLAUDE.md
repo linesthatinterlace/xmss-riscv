@@ -117,9 +117,9 @@ These are the same rules as in the C implementation, expressed in Rust terms. Th
 ## Dependencies
 
 Runtime:
-- `sha2` — SHA-256 / SHA-512 (RustCrypto)
-- `sha3` — SHAKE-128 / SHAKE-256 (RustCrypto)
-- `subtle` — constant-time comparisons
+- `subtle` — constant-time comparisons. This is a narrow, audited, single-purpose crate whose only job is preventing the compiler from optimising away a comparison; it is not "rolling our own crypto" in the way that a from-scratch SHA-2 would be.
+
+SHA-256, SHA-512, SHAKE-128, and SHAKE-256 are implemented from scratch in `src/hash/`, consistent with the C implementation. This keeps the Rust code a faithful reference for the eventual Jasmin port (which will also need its own hash implementations) and avoids a transitive dependency tree.
 
 Dev/test only:
 - `hex-literal` or `hex` — for KAT vectors
@@ -150,3 +150,4 @@ A deterministic test RNG (seeded, reproducible) should be provided in `tests/tes
 - Remaining-signatures query
 - `no_std` crate feature (disable `std`, provide an allocator-free API)
 - Benchmarks (`benches/`) via Criterion
+- Optional `rustcrypto-backend` Cargo feature to swap `src/hash/` for RustCrypto (`sha2`, `sha3`) for users who want audited primitives and are not targeting Jasmin
