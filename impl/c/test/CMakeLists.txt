@@ -32,9 +32,10 @@ add_xmss_test(test_kat)
 add_xmss_test(test_bds)
 add_xmss_test(test_bds_serial)
 add_xmss_test(test_xmss_mt)
+add_xmss_test(test_xmss_mt_kat     ${CMAKE_SOURCE_DIR}/src/hash)
 
 set_tests_properties(
-    test_xmss test_kat test_bds test_bds_serial test_xmss_mt
+    test_xmss test_kat test_bds test_bds_serial test_xmss_mt test_xmss_mt_kat
     PROPERTIES LABELS "slow"
 )
 
@@ -45,7 +46,7 @@ set_tests_properties(
     PROPERTIES TIMEOUT 30
 )
 set_tests_properties(
-    test_xmss test_bds test_bds_serial
+    test_xmss test_bds test_bds_serial test_xmss_mt_kat
     PROPERTIES TIMEOUT 120
 )
 set_tests_properties(

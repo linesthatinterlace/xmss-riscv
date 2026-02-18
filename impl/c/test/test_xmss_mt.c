@@ -301,6 +301,48 @@ static void test_cross_key(void)
     xmss_mt_test_ctx_free(&b);
 }
 
+/* Remaining-signatures query for XMSS-MT */
+static void test_remaining_sigs(void)
+{
+    xmss_mt_test_ctx t;
+    uint64_t rem;
+    uint32_t i;
+
+    printf("\n--- remaining signatures query ---\n");
+
+    xmss_mt_test_ctx_init(&t, TEST_OID);
+    test_rng_reset(0xDEADC0DEULL);
+    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+
+    /* After keygen: remaining == 2^h */
+    rem = xmss_mt_remaining_sigs(&t.p, t.sk);
+    TEST_INT("MT: remaining after keygen == 2^h",
+             (long long)rem, (long long)(t.p.idx_max + 1));
+
+    /* After one signature: remaining == 2^h - 1 */
+    xmss_mt_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    rem = xmss_mt_remaining_sigs(&t.p, t.sk);
+    TEST_INT("MT: remaining after 1 sign == 2^h-1",
+             (long long)rem, (long long)(t.p.idx_max));
+
+    /* Set idx to idx_max directly: remaining == 1 */
+    for (i = 0; i < t.p.idx_bytes; i++) {
+        t.sk[4 + i] = (uint8_t)(t.p.idx_max >> (8 * (t.p.idx_bytes - 1 - i)));
+    }
+    rem = xmss_mt_remaining_sigs(&t.p, t.sk);
+    TEST_INT("MT: remaining at idx_max == 1", (long long)rem, 1LL);
+
+    /* Set idx beyond idx_max: key exhausted, remaining == 0 */
+    for (i = 0; i < t.p.idx_bytes; i++) {
+        uint64_t exhausted = t.p.idx_max + 1;
+        t.sk[4 + i] = (uint8_t)(exhausted >> (8 * (t.p.idx_bytes - 1 - i)));
+    }
+    rem = xmss_mt_remaining_sigs(&t.p, t.sk);
+    TEST_INT("MT: remaining when exhausted == 0", (long long)rem, 0LL);
+
+    xmss_mt_test_ctx_free(&t);
+}
+
 int main(void)
 {
     printf("=== test_xmss_mt ===\n");
@@ -316,6 +358,7 @@ int main(void)
     test_message_boundaries();
     test_bds_k2();
     test_cross_key();
+    test_remaining_sigs();
 
     return tests_done();
 }

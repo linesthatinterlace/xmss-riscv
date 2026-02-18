@@ -155,6 +155,19 @@ int xmss_sign(const xmss_params *p, uint8_t *sig,
               const uint8_t *msg, size_t msglen,
               uint8_t *sk, xmss_bds_state *state, uint32_t bds_k);
 
+/**
+ * xmss_remaining_sigs() - Query how many signatures remain in an XMSS key.
+ *
+ * Reads the current leaf index from sk and returns the number of signatures
+ * that can still be produced: (idx_max - idx + 1), or 0 if exhausted.
+ *
+ * @p:   Parameter set.
+ * @sk:  Secret key (p->sk_bytes bytes); read-only.
+ *
+ * Returns the number of remaining signatures (0 if key is exhausted).
+ */
+uint64_t xmss_remaining_sigs(const xmss_params *p, const uint8_t *sk);
+
 /* ====================================================================
  * BDS state serialization
  * ==================================================================== */
@@ -255,6 +268,19 @@ int xmss_mt_keygen(const xmss_params *p, uint8_t *pk, uint8_t *sk,
 int xmss_mt_sign(const xmss_params *p, uint8_t *sig,
                 const uint8_t *msg, size_t msglen,
                 uint8_t *sk, xmss_mt_state *state, uint32_t bds_k);
+
+/**
+ * xmss_mt_remaining_sigs() - Query how many signatures remain in an XMSS-MT key.
+ *
+ * Reads the current index from sk and returns the number of signatures
+ * that can still be produced: (idx_max - idx + 1), or 0 if exhausted.
+ *
+ * @p:   Parameter set (must have d > 1).
+ * @sk:  Secret key (p->sk_bytes bytes); read-only.
+ *
+ * Returns the number of remaining signatures (0 if key is exhausted).
+ */
+uint64_t xmss_mt_remaining_sigs(const xmss_params *p, const uint8_t *sk);
 
 /**
  * xmss_mt_verify() - Verify an XMSS-MT signature.

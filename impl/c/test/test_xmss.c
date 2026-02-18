@@ -240,6 +240,49 @@ static void test_sequential(uint32_t oid, const char *name)
     xmss_test_ctx_free(&t);
 }
 
+/* Remaining-signatures query */
+static void test_remaining_sigs(uint32_t oid, const char *name)
+{
+    xmss_test_ctx t;
+    uint64_t rem;
+    char label[128];
+    uint32_t i;
+
+    xmss_test_ctx_init(&t, oid);
+    test_rng_reset(0xCAFEBABEULL);
+    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+
+    /* After keygen: remaining == 2^h */
+    rem = xmss_remaining_sigs(&t.p, t.sk);
+    snprintf(label, sizeof(label), "%s: remaining after keygen == 2^h", name);
+    TEST_INT(label, (long long)rem, (long long)(t.p.idx_max + 1));
+
+    /* After one signature: remaining == 2^h - 1 */
+    xmss_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    rem = xmss_remaining_sigs(&t.p, t.sk);
+    snprintf(label, sizeof(label), "%s: remaining after 1 sign == 2^h-1", name);
+    TEST_INT(label, (long long)rem, (long long)(t.p.idx_max));
+
+    /* Set idx to idx_max directly: remaining == 1 */
+    for (i = 0; i < t.p.idx_bytes; i++) {
+        t.sk[4 + i] = (uint8_t)(t.p.idx_max >> (8 * (t.p.idx_bytes - 1 - i)));
+    }
+    rem = xmss_remaining_sigs(&t.p, t.sk);
+    snprintf(label, sizeof(label), "%s: remaining at idx_max == 1", name);
+    TEST_INT(label, (long long)rem, 1LL);
+
+    /* Set idx to idx_max + 1: key exhausted, remaining == 0 */
+    for (i = 0; i < t.p.idx_bytes; i++) {
+        uint64_t exhausted = t.p.idx_max + 1;
+        t.sk[4 + i] = (uint8_t)(exhausted >> (8 * (t.p.idx_bytes - 1 - i)));
+    }
+    rem = xmss_remaining_sigs(&t.p, t.sk);
+    snprintf(label, sizeof(label), "%s: remaining when exhausted == 0", name);
+    TEST_INT(label, (long long)rem, 0LL);
+
+    xmss_test_ctx_free(&t);
+}
+
 int main(void)
 {
     printf("=== test_xmss ===\n");
@@ -262,6 +305,10 @@ int main(void)
     printf("\n--- message boundary tests ---\n");
     test_message_boundaries(OID_XMSS_SHA2_10_256,  "XMSS-SHA2_10_256");
     test_message_boundaries(OID_XMSS_SHAKE_10_256, "XMSS-SHAKE_10_256");
+
+    printf("\n--- remaining signatures query ---\n");
+    test_remaining_sigs(OID_XMSS_SHA2_10_256,  "XMSS-SHA2_10_256");
+    test_remaining_sigs(OID_XMSS_SHAKE_10_256, "XMSS-SHAKE_10_256");
 
     return tests_done();
 }
