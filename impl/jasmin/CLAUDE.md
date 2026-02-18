@@ -43,6 +43,32 @@ Formal verification (optional, later):
   ```
   Do not run `opam upgrade easycrypt` without checking — the pin may be intentional.
 
+## Architecture design decisions
+
+### Algorithm / hash boundary
+
+The implementation is split into two layers:
+
+- **Algorithm layer** (`wots.jinc`, `bds.jinc`, `xmss.jinc`, etc.) — written using only basic Jasmin operations (`+`, `-`, `^`, `&`, `|`, `>>`, `<<`, array access). No architecture-specific intrinsics. This layer is portable across x86-64 and RISC-V without modification.
+
+- **Hash layer** (`src/hash/sha256.jinc`, `sha512.jinc`, `shake128.jinc`, `shake256.jinc`) — architecture-specific. These are the only files that change between targets.
+
+**Pluggability**: Jasmin has no function pointers (J2 rule). Hash backends are selected by which `.jinc` the top-level `.jazz` file `require`s — i.e., by separate compilation, mirroring the C implementation's `hash_iface.h` / `xmss_hash.c` split.
+
+**libjade as a hash source**: The libjade `amd64/ref/` hash implementations are worth checking for portability. If they implement rotation as `(x >> n) | (x << (32-n))` rather than using `#ROR` intrinsics, they may compile for RISC-V unchanged. If they use `#ROR`, we write portable-from-scratch alternatives (the rotation trick is trivial). Check before writing anything new.
+
+**RISC-V path**: only the hash `.jinc` files need a RISC-V variant. The entire algorithm layer ports for free.
+
+### RISC-V instruction analysis (separate workstream)
+
+Before (or alongside) writing Jasmin code, we want to analyse what instructions the C compiler actually emits when targeting RISC-V, by disassembling the RISC-V binaries we already build in `impl/c/`. This tells us:
+
+- Which base ISA instructions XMSS actually uses
+- Which extensions (B for bitmanip/rotate, V for vector, etc.) could help or are required
+- What patterns Jasmin's RISC-V backend will need to handle — and where it may currently fall short or need extension
+
+This analysis is a prerequisite to any work on extending or contributing to Jasmin's RISC-V backend. It lives in `impl/c/` (compile + disassemble) but informs the Jasmin roadmap here.
+
 ## Build commands
 
 > **Note**: Build system is not yet established. This section will be updated as it develops.
@@ -164,5 +190,5 @@ These parallel the C implementation's J1–J8 rules:
 - Decide on build system (simple Makefile vs CMake integration with the rest of the project).
 - Decide whether to share the CMake `XMSS_TEST_TIMEOUT_SCALE` mechanism or keep Jasmin tests independent.
 - EasyCrypt proof strategy: which properties to prove first (CT? functional correctness of WOTS+?).
-- RISC-V backend: track Jasmin upstream; port once backend is stable.
+- RISC-V backend: track Jasmin upstream; port once backend is stable. **Prerequisite**: complete the RISC-V instruction analysis (see Architecture section above) to understand what backend support is actually needed.
 - Possible libjade integration or contribution.
