@@ -19,6 +19,7 @@ The goal of this project is to provide multiple implementations of the same spec
 | Directory | Status | Description |
 |-----------|--------|-------------|
 | [`impl/c/`](impl/c/README.md) | Complete | C99 reference implementation. All 12 XMSS and 32 XMSS-MT parameter sets. No-malloc, BDS-accelerated, cross-compiles to RISC-V via QEMU. |
+| `impl/rust/` | Planned | Rust implementation. No-alloc algorithm code, static dispatch, mirrors C module structure. |
 | `impl/jasmin/` | Planned | Jasmin implementation targeting RISC-V 64-bit. |
 
 ## Repository layout
