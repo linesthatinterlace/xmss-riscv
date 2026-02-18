@@ -1,6 +1,9 @@
-build/
-build-rel/
-build-rv/
+# Build directories (per-implementation)
+**/build/
+**/build-rel/
+**/build-rv/
+
+# Build artefacts
 *.o
 *.a
 CMakeCache.txt
