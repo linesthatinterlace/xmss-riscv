@@ -73,3 +73,32 @@ make
 
 The Makefile links `-lcrypto` (OpenSSL) for SHA-2; SHAKE is handled by
 the bundled `fips202.c`.
+
+## riscv-opcodes
+
+A git submodule tracking the upstream RISC-V opcodes database
+(`riscv/riscv-opcodes` on GitHub).
+
+**Status**: Read-only. Used by `isa/scripts/gen_lookup.sh` to generate
+an authoritative mnemonic→extension lookup table for the ISA analysis.
+
+### What it contains
+
+The `extensions/` directory has one file per ISA extension (`rv_i`, `rv64_i`,
+`rv_m`, `rv64_m`, `rv_zbb`, `rv64_zbb`, etc.). Each file lists instructions
+with their mnemonic, operands, and encoding fields.
+
+Lines starting with `$pseudo_op` define pseudo-instructions (e.g. `mv`, `ret`,
+`sext.w`). Lines starting with `$import` or `#` are directives/comments.
+
+### Updating
+
+```bash
+cd third_party/riscv-opcodes
+git fetch origin
+git checkout <tag-or-commit>
+cd ../..
+git add third_party/riscv-opcodes
+```
+
+Then regenerate the lookup table: `isa/scripts/gen_lookup.sh`

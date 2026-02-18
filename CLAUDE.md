@@ -31,14 +31,14 @@ Check CI status: `gh run list` / `gh run view <id>` / `gh run watch <id>`
 
 ### RISC-V instruction analysis
 
-Before extending Jasmin's RISC-V backend (or contributing to it upstream), we need to understand what instructions XMSS actually requires at the ISA level. The planned approach is to disassemble the RISC-V binaries already produced by `impl/c/` and analyse which instructions appear, which ISA extensions (B for bitmanip, V for vector, etc.) are used or would help, and where gaps in Jasmin's RISC-V backend would arise.
+Analyses which RISC-V ISA extensions `libxmss.a` actually requires, informing the Jasmin port's target ISA. Artifacts live in `isa/`:
 
-This work draws from `impl/c/` but its output informs `impl/jasmin/`. Artifacts live in `isa/` at the project root:
+- `isa/scripts/gen_lookup.sh` — generates authoritative mnemonic→extension lookup from `third_party/riscv-opcodes/`
+- `isa/scripts/analyse.sh` — disassembles `impl/c/build-rv/libxmss.a`, classifies by extension, detects C encoding from byte width
+- `isa/reports/xmss_rv64_isa_profile.md` — full per-object-file results with extension breakdown
+- `isa/reports/.report-todo.md` — brief for converting the profile into a PDF report for Francois Dupressoir
 
-- `isa/binaries/` — RISC-V ELF test binaries cross-compiled from `impl/c/` (riscv64-linux-gnu-gcc 13.3, `-march=rv64gc`)
-- `isa/scripts/analyse.sh` — disassembles binaries and classifies instructions by ISA extension
-- `isa/reports/xmss_rv64_isa_profile.md` — full results: XMSS is pure RV64I; Zbb (rotate/byte-swap) is absent but relevant for SHA-2 in the hash layer only
-- `isa/reports/.report-todo.md` — brief for converting the profile into a PDF report for Francois Dupressoir (clean technical report style; he knows Jasmin, needs XMSS+RISC-V motivation)
+**Key findings**: XMSS uses only I + M (M only for compiler address arithmetic). 48% of instructions use C encoding. No A/F/D/Zb*. Zbb (`ror`/`rev8`) is relevant for SHA-2 but not compiler-emitted with `-march=rv64gc`.
 
 See `impl/jasmin/CLAUDE.md` for how these findings affect the Jasmin port strategy.
 

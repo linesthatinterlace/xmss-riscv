@@ -1,136 +1,106 @@
 # isa/ — RISC-V ISA profiling for the XMSS C implementation
 
-This directory contains tooling to determine which RISC-V ISA extensions are
-actually exercised by the XMSS C implementation when compiled with the
-standard `rv64gc` toolchain.  The results inform what ISA support the planned
+This directory determines which RISC-V ISA extensions are actually used by
+the XMSS C implementation. The results inform what ISA support the planned
 Jasmin port must provide.
 
 ## Directory layout
 
 ```
 isa/
-  binaries/     RISC-V ELF test binaries (copied here from impl/c/build-rv/)
-  scripts/      Analysis scripts
-  reports/      Generated Markdown reports (output of the analysis)
+  binaries/     Scratch space for RISC-V ELFs (not committed; see .gitignore)
+  scripts/
+    gen_lookup.sh     Generate mnemonic→extension lookup from riscv-opcodes
+    analyse.sh        Disassemble libxmss.a and produce the ISA profile report
+    mnemonic_extensions.tsv   Generated lookup table (gitignored)
+  reports/
+    xmss_rv64_isa_profile.md  Generated report
 ```
 
-## Step 1 — Build the RISC-V binaries
-
-From the `impl/c/` directory, run the RISC-V cross-compile target:
+## Quick start
 
 ```bash
-cd impl/c
-make rv
-```
+# 1. Build the RISC-V library
+cd impl/c && make rv && cd ../..
 
-This invokes CMake with `cmake/toolchain-riscv64.cmake` which uses
-`riscv64-linux-gnu-gcc -march=rv64gc -mabi=lp64d`.  The resulting ELF
-binaries are placed in `impl/c/build-rv/test/`.
+# 2. Generate the lookup table (auto-runs if missing)
+isa/scripts/gen_lookup.sh
 
-Then copy them into `isa/binaries/`:
-
-```bash
-cp impl/c/build-rv/test/test_* isa/binaries/
-```
-
-The expected binaries (matching the test suite as of this writing) are:
-
-| Binary | What it tests |
-|--------|--------------|
-| `test_params` | All 12 XMSS OIDs |
-| `test_address` | ADRS serialisation |
-| `test_hash` | SHA-256, SHA-512, SHAKE-128, SHAKE-256 |
-| `test_wots` | WOTS+ sign/verify roundtrip |
-| `test_xmss` | BDS keygen/sign/verify roundtrip |
-| `test_xmss_kat` | KAT cross-validation against xmss-reference |
-| `test_bds` | BDS state with bds_k=2 and bds_k=4 |
-| `test_bds_serial` | BDS state serialisation round-trip |
-| `test_xmss_mt_params` | All 32 XMSS-MT OIDs |
-| `test_xmss_mt` | XMSS-MT keygen/sign/verify, tree-boundary crossing |
-| `test_utils_internal` | ct_memcmp, ull_to_bytes, xmss_memzero, etc. |
-| `test_xmss_mt_kat` | XMSS-MT KAT cross-validation |
-
-## Step 2 — Run the analysis
-
-```bash
-isa/scripts/analyse.sh [BINARIES_DIR]
-```
-
-`BINARIES_DIR` defaults to `isa/binaries/` (relative to the script location),
-so from the repo root you can simply run:
-
-```bash
+# 3. Run the analysis (targets impl/c/build-rv/libxmss.a by default)
 isa/scripts/analyse.sh
 ```
 
-The script requires `riscv64-linux-gnu-objdump`.  Install it with:
-
-```bash
-sudo apt install binutils-riscv64-linux-gnu
-```
-
-## Step 3 — Read the report
-
 The report is written to `isa/reports/xmss_rv64_isa_profile.md`.
 
-### What the report contains
+## Prerequisites
 
-**Per-binary summary table**: total instruction references and unique
-mnemonic count for each binary.  Binaries with many unique mnemonics exercise
-more diverse code paths.
+- `riscv64-linux-gnu-objdump` (from `binutils-riscv64-linux-gnu`)
+- `riscv64-linux-gnu-gcc` (from `gcc-riscv64-linux-gnu`) — for building `libxmss.a`
+- `third_party/riscv-opcodes` submodule initialised
 
-**Extension summary table**: instruction reference counts grouped by RISC-V
-ISA extension.  The extensions are:
+```bash
+sudo apt install binutils-riscv64-linux-gnu gcc-riscv64-linux-gnu
+git submodule update --init third_party/riscv-opcodes
+```
 
-| Extension | Description |
-|-----------|-------------|
-| `RV64I`   | Base 64-bit integer: loads, stores, branches, arithmetic, shifts |
-| `M`       | Integer multiply and divide |
-| `A`       | Atomic memory operations (lr/sc, amo*) |
-| `F`       | Single-precision floating-point (unexpected — XMSS is integer-only) |
-| `D`       | Double-precision floating-point (unexpected) |
-| `C`       | Compressed 16-bit instruction encoding |
-| `Zb`      | Bit-manipulation: Zba (address gen), Zbb (rotate/clz/rev8), Zbc (clmul), Zbs (bit ops) |
-| `Zicsr`   | CSR read/write instructions |
-| `Zifencei`| Instruction-fetch fence |
-| `OTHER`   | Unclassified mnemonics (investigate manually) |
+## Methodology
 
-**Per-extension detail tables**: every distinct mnemonic in each extension,
-sorted by frequency.  High-frequency mnemonics are the most important to
-support in Jasmin.
+### Analysis target: `libxmss.a`
 
-**Jasmin implications section**: a summary of which extensions the Jasmin
-port must target, with recommendations for optimisation (e.g. using Zbb for
-SHA-2 rotations).
+The analysis targets `libxmss.a` — the static library containing only XMSS
+algorithm code (params, hash, WOTS, XMSS, XMSS-MT, BDS, utils). This isolates
+XMSS from libc, `printf`, `malloc`, stack guards, and other test-harness code
+that would pollute the ISA profile.
 
-### Interpreting instruction counts
+### Mnemonic classification
 
-The counts are summed across all binaries: if a routine appears in multiple
-linked test binaries it is counted multiple times.  This inflates totals
-but correctly reflects which instructions appear in the compiled output.
+`gen_lookup.sh` generates an authoritative mnemonic→extension lookup table
+from the `riscv-opcodes` submodule (`third_party/riscv-opcodes/`). This is
+the same database used by the RISC-V toolchain to define instruction encodings.
 
-Instructions from libc (e.g. `printf`, `memcpy`) will be included because
-the test binaries are dynamically linked.  To isolate pure XMSS instructions,
-pass only the `libxmss.a` archive to `objdump`, or use
-`riscv64-linux-gnu-objdump -d --disassemble=<symbol>` to look at specific
-functions.
+The lookup covers:
+- Real instructions (first word of non-comment, non-directive lines)
+- Pseudo-ops (`$pseudo_op` lines — e.g. `mv`, `ret`, `sext.w`, `zext.b`)
+- De-aliased C extension mnemonics (since objdump renders `sd` not `c.sd`)
+- Manual supplement for objdump-specific pseudos not in riscv-opcodes
+  (`li`, `la`, `not`, `negw`, `j`, `jr`, `call`, `tail`, etc.)
 
-### Key result to look for
+### C (compressed) encoding detection
 
-The Zb (bit-manipulation) section is the most interesting: `rv64gc` does not
-include Zb, so the C compiler will not emit Zb instructions.  If Zb
-instructions appear, it means the toolchain is using an extended march.
-If they are absent (as expected), the Jasmin port can choose to use Zbb
-instructions (e.g. `ror`, `rev8`, `clz`) explicitly for hash functions,
-enabling optimisation beyond what the C compiler produces.
+GNU objdump renders compressed instructions using their uncompressed aliases
+(`sd` not `c.sd`, `li` not `c.li`). The previous analysis looked for `c.`
+prefixes that never appeared, reporting C=0.
 
-## Notes
+The new analysis detects C encoding from raw instruction byte width:
+- 2 bytes (4 hex chars) = 16-bit compressed
+- 4 bytes (8 hex chars) = 32-bit standard
 
-- The binaries are not committed to the repository (they are binary build
-  artefacts).  The `binaries/` directory contains only a `.gitkeep`
-  placeholder.
-- The toolchain used is `riscv64-linux-gnu-gcc` from the Debian/Ubuntu
-  `gcc-riscv64-linux-gnu` package.  The compile flags are in
-  `impl/c/cmake/toolchain-riscv64.cmake`.
-- The analysis script uses only POSIX tools (`awk`, `find`, `sort`) plus
-  `riscv64-linux-gnu-objdump`.  It does not execute the binaries.
+### Two orthogonal axes
+
+1. **Semantic extension**: What the instruction does (I, M, Zba, Zbb, etc.)
+   — determined by the lookup table.
+2. **Encoding**: Whether it uses compressed (16-bit) or standard (32-bit)
+   encoding — determined by byte width.
+
+The semantic extension is what matters for the Jasmin port. C encoding is a
+secondary observation (the assembler handles it automatically).
+
+## Report contents
+
+- **Methodology** section explaining what was analysed and how
+- **Per-object-file summary**: instruction count, unique mnemonics, C% per `.o`
+- **Semantic extension summary**: which ISA extensions are used
+- **Per-extension mnemonic detail**: every mnemonic per extension with counts
+  and which object files use it
+- **C encoding statistics**: overall and per-object-file
+- **Per-object extension breakdown**: which extensions each `.o` file uses
+- **Jasmin implications**: recommended target ISA for the Jasmin port
+
+## Key results
+
+- XMSS (`libxmss.a`) uses only **I** and **M** extensions
+- M is used only for compiler-generated address arithmetic (`mulw`, `mul`, `divuw`)
+- 48% of instructions use C (compressed) encoding
+- No A, F, D, Zb*, or Zicsr instructions appear
+- Zbb (`ror`, `rev8`) is absent but relevant for SHA-2 — the Jasmin port
+  can use it explicitly in the hash layer
