@@ -30,22 +30,14 @@
    the lookup table, and writes the .md report.
 
 3. The Zbb comparison in the .tex (Section 4.1–4.2, Tables 3–4) was
-   produced by temporarily building `libxmss.a` with `-march=rv64gc_zbb`
-   and running `analyse.sh` on that build. The data was then manually
-   incorporated into the .tex. To reproduce:
+   produced by `isa/scripts/compare_zbb.sh`, which builds `libxmss.a`
+   with both `-march=rv64gc` and `-march=rv64gc_zbb` in fresh temp
+   directories (avoiding stale CMake cache issues), runs `analyse.sh`
+   on each, and prints a summary comparison. To reproduce:
    ```bash
-   cd impl/c
-   cmake -B build-rv-zbb \
-     -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake \
-     -DCMAKE_BUILD_TYPE=Release \
-     -DCMAKE_C_FLAGS="-march=rv64gc_zbb -mabi=lp64d \
-       -I/usr/riscv64-linux-gnu/include \
-       -L/usr/riscv64-linux-gnu/lib"
-   cmake --build build-rv-zbb --target xmss
-   ../../isa/scripts/analyse.sh build-rv-zbb/libxmss.a
-   rm -rf build-rv-zbb
+   isa/scripts/compare_zbb.sh
    ```
-   Then compare the generated .md against the rv64gc version.
+   The data is then manually incorporated into the .tex.
 
 ## Key decisions
 
