@@ -15,6 +15,17 @@ Read the CLAUDE.md in the relevant implementation directory for build commands, 
 - `doc/rfc8391.txt` -- the RFC 8391 specification. All implementations target this spec including Errata 7900 (SK serialisation byte layout).
 - `third_party/xmss-reference/` -- git submodule of the XMSS reference implementation. **Read-only**: used to understand algorithm logic and regenerate KAT fingerprints. **Do NOT copy code from it** -- our implementations must follow stricter rules (no VLAs, no malloc, no function pointers, etc.) which the reference violates. Only read it to understand algorithm logic, then reimplement from scratch. See `third_party/CLAUDE.md` for how to compile and run the KAT fingerprint generator.
 
+## CI
+
+GitHub Actions CI runs on every push and PR:
+
+- **`ci.yml`**: gcc and clang (native, `-Werror`), all 12 tests (~4 min each).
+- **`riscv.yml`**: RISC-V cross-compile + QEMU (fast tests + sign/verify roundtrips). Weekly + manual trigger.
+
+**Prefer pushing and letting CI run the full test suite** rather than running slow tests locally. Use `make test-fast` locally for quick smoke checks, then push to get full coverage across compilers.
+
+Check CI status: `gh run list` / `gh run view <id>` / `gh run watch <id>`
+
 ## Cross-cutting rules
 
 These apply to ALL implementations regardless of language:

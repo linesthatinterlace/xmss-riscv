@@ -25,6 +25,23 @@ qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_params
 qemu-riscv64 -L /usr/riscv64-linux-gnu build-rv/test/test_xmss
 ```
 
+## CI
+
+GitHub Actions CI:
+- **`ci.yml`** (every push/PR): gcc and clang native Release builds with `-Werror`, all 12 tests (~4 min each)
+- **`riscv.yml`** (weekly + manual): RISC-V cross-compile + QEMU, fast tests + sign/verify roundtrips (test_xmss, test_xmss_mt)
+
+**Workflow**: run `make test-fast` locally for quick smoke checks, then push to let CI run the full suite across both compilers. Avoid running slow tests (KAT, XMSS-MT boundary crossing) locally unless debugging a specific failure.
+
+Check CI: `gh run list`, `gh run view <id>`, `gh run watch <id> --exit-status`
+
+### CMake options for CI
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `XMSS_WERROR` | `OFF` | Promote warnings to errors (`-Werror`) |
+| `XMSS_TEST_TIMEOUT_SCALE` | `1` | Multiplier for test timeouts (4 for QEMU) |
+
 ## Architecture
 
 ### Hash abstraction boundary
