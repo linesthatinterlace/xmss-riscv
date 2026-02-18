@@ -289,6 +289,19 @@ int xmss_mt_sign(const xmss_params *p, uint8_t *sig,
 }
 
 /* ====================================================================
+ * xmss_mt_remaining_sigs()
+ * ==================================================================== */
+
+uint64_t xmss_mt_remaining_sigs(const xmss_params *p, const uint8_t *sk)
+{
+    uint64_t idx = bytes_to_ull(sk + sk_off_idx(p), p->idx_bytes);
+    if (idx > p->idx_max) {
+        return 0;
+    }
+    return p->idx_max - idx + 1;
+}
+
+/* ====================================================================
  * xmss_mt_verify() - Algorithm 17: XMSS-MT Signature Verification
  * ==================================================================== */
 

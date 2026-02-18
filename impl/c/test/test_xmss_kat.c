@@ -1,5 +1,5 @@
 /**
- * test_kat.c - Known Answer Tests cross-validated against xmss-reference
+ * test_xmss_kat.c - Known Answer Tests cross-validated against xmss-reference
  *
  * Uses BDS-accelerated keygen/sign for practical performance.
  *
@@ -153,7 +153,7 @@ int main(void)
 {
     size_t i;
 
-    printf("=== test_kat (cross-validated against xmss-reference) ===\n");
+    printf("=== test_xmss_kat (cross-validated against xmss-reference) ===\n");
 
     for (i = 0; i < NUM_VECTORS; i++) {
         printf("--- %s ---\n", vectors[i].name);
