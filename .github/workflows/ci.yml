@@ -52,12 +52,13 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE=cmake/toolchain-riscv64.cmake
           -DCMAKE_BUILD_TYPE=Release
           -DXMSS_WERROR=ON
+          -DXMSS_TEST_TIMEOUT_SCALE=4
 
       - name: Build
         run: cmake --build build-rv
 
       - name: Fast tests
-        run: ctest --test-dir build-rv --output-on-failure -L fast --timeout 120
+        run: ctest --test-dir build-rv --output-on-failure -L fast
 
       - name: Full tests
-        run: ctest --test-dir build-rv --output-on-failure --timeout 900
+        run: ctest --test-dir build-rv --output-on-failure

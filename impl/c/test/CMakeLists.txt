@@ -41,15 +41,20 @@ set_tests_properties(
 
 # Timeouts: generous limits to catch hangs without breaking slow runs.
 # Fast tests should finish in well under 30 s; slow tests under 5 min.
+# Use XMSS_TEST_TIMEOUT_SCALE (default 1) to increase for emulated runs.
+math(EXPR FAST_TIMEOUT      "30  * ${XMSS_TEST_TIMEOUT_SCALE}")
+math(EXPR SLOW_TIMEOUT      "120 * ${XMSS_TEST_TIMEOUT_SCALE}")
+math(EXPR VERY_SLOW_TIMEOUT "300 * ${XMSS_TEST_TIMEOUT_SCALE}")
+
 set_tests_properties(
     test_params test_address test_hash test_wots test_xmss_mt_params test_utils_internal
-    PROPERTIES TIMEOUT 30
+    PROPERTIES TIMEOUT ${FAST_TIMEOUT}
 )
 set_tests_properties(
     test_xmss test_bds test_bds_serial test_xmss_mt_kat
-    PROPERTIES TIMEOUT 120
+    PROPERTIES TIMEOUT ${SLOW_TIMEOUT}
 )
 set_tests_properties(
     test_xmss_kat test_xmss_mt
-    PROPERTIES TIMEOUT 300
+    PROPERTIES TIMEOUT ${VERY_SLOW_TIMEOUT}
 )

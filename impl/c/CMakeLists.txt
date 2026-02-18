@@ -23,6 +23,10 @@ if(XMSS_WERROR)
     add_compile_options(-Werror)
 endif()
 
+# Timeout multiplier for tests (increase for emulated runs, e.g. QEMU)
+set(XMSS_TEST_TIMEOUT_SCALE "1" CACHE STRING
+    "Multiplier for test timeouts (e.g. 4 for QEMU)")
+
 # Debug build: sanitizers
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     if(NOT CMAKE_CROSSCOMPILING)
