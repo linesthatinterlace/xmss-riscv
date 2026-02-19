@@ -44,18 +44,27 @@ An *address* $\mathsf{adrs}$ is a structured 32-byte value with fields including
 
 We say an address is *outer-fixed* at $(\ell, \tau)$ if its $\mathsf{layer}$ and
 $\mathsf{tree}$ fields are fixed to $\ell$ and $\tau$ respectively.
-When the outer fields are fixed, an address is uniquely identified by
-$(\mathsf{type}, \mathsf{treeHeight}, \mathsf{treeIndex})$; for hash-tree
-nodes we abbreviate this to $(h, j)$ where $h = \mathsf{treeHeight}$ and
-$j = \mathsf{treeIndex}$.
 
-Define the *canonical hash-tree address* for a node at height $h$ and index $j$,
-within a tree with outer fields $(\ell, \tau)$, as:
+**Address convention (RFC 8391).** This is a critical point that must be pinned
+precisely. When the RFC computes an internal node at height $h$ (i.e., the parent
+of two nodes at height $h-1$), it sets:
 
-$$\mathsf{addr}(\ell, \tau, h, j) := \text{(type=HASH, layer=}\ell\text{, tree=}\tau\text{, treeHeight=}h\text{, treeIndex=}j\text{)}$$
+$$\mathsf{treeHeight} = h - 1 \quad \text{(the height of the \emph{children}, not the parent)}$$
+$$\mathsf{treeIndex} = j \quad \text{(the index of the \emph{parent} node among nodes at height } h\text{)}$$
 
-*(Note: RFC 8391 sets treeHeight to the height of the children, not the parent.
-We follow the RFC convention; the exact mapping is pinned in Appendix A.)*
+This is confirmed by Algorithm 9 (treeHash), which increments treeHeight *after*
+calling RAND\_HASH, and by Algorithm 13 (rootFromSig), which sets
+$\mathsf{treeHeight} = k$ when computing the node at height $k+1$.
+
+We adopt this convention throughout. Define the *canonical hash-tree address* for
+computing a node at height $h$ (with index $j$) within a tree with outer fields
+$(\ell, \tau)$ as:
+
+$$\mathsf{addr}(\ell, \tau, h, j) := \text{(type=HASH, layer=}\ell\text{, tree=}\tau\text{, treeHeight=}h{-}1\text{, treeIndex=}j\text{)}$$
+
+That is, $\mathsf{addr}(\ell, \tau, h, j)$ is the address used as input to $H$
+when *producing* the node at height $h$, index $j$. The treeHeight field carries
+the value $h-1$.
 
 ### 2.2 Primitive hash functions
 
@@ -90,9 +99,36 @@ The *root* of the XMSS tree is $\mathsf{Tree}(H, 0)$ where $H$ is the tree heigh
 
 The iterative algorithm maintains a stack $\sigma$ of pairs $(v, k)$ where $v$
 is an $n$-byte node value and $k \geq 0$ is its height.
-The stack invariant and algorithm are given in Figure 1 below.
 
-**Figure 1: Iterative treehash**
+There are two variants of interest, which differ only in how they compute the
+address for each merge. Both are given here because establishing their
+equivalence is a central proof obligation (see Lemma 0 below).
+
+**Figure 1a: RFC 8391 Algorithm 9 (stateful address)**
+
+The RFC tracks treeIndex as mutable state, updated incrementally at each merge:
+
+```
+Stack σ := []
+for i = 0 to 2^h - 1:
+    idx := s + i
+    leaf_val := leaf(idx)
+    ADRS.setTreeHeight(0)
+    ADRS.setTreeIndex(idx)           // start: leaf's own index
+    push(σ, (leaf_val, 0))
+    while |σ| ≥ 2 and height(σ[-2]) = height(σ[-1]):
+        ADRS.setTreeIndex((ADRS.getTreeIndex() - 1) / 2)   // parent index
+        (L, _) := pop(σ[-2]);  (R, _) := pop(σ[-1])
+        v := RAND_HASH(L, R, SEED, ADRS)
+        ADRS.setTreeHeight(ADRS.getTreeHeight() + 1)        // after the hash
+        push(σ, (v, ADRS.getTreeHeight()))
+return pop(σ)
+```
+
+**Figure 1b: C implementation (closed-form address)**
+
+The C implementation (introduced in the initial commit) computes treeIndex
+from scratch at each merge, with no carried address state between iterations:
 
 ```
 Stack σ := []
@@ -100,27 +136,70 @@ for idx = s to s + 2^h - 1:
     leaf_val := leaf(idx)
     push(σ, (leaf_val, 0))
     while |σ| ≥ 2 and height(σ[-2]) = height(σ[-1]):
-        node_h  := height(σ[-1])          // height of children
-        (R, _)  := pop(σ)
-        (L, _)  := pop(σ)
-        j       := idx >> (node_h + 1)    // index of parent node
-        adrs    := addr(ℓ, τ, node_h, j)
-        v       := H(adrs, L, R)
+        node_h := height(σ[-2])                              // children's height
+        (L, _) := pop(σ[-2]);  (R, _) := pop(σ[-1])
+        j := (s >> (node_h + 1)) + ((idx - s) >> (node_h + 1))
+        adrs := addr(ℓ, τ, node_h + 1, j)                   // using our notation
+        v := H(adrs, L, R)
         push(σ, (v, node_h + 1))
 return value(σ[0])
 ```
 
-*(The index formula `j := idx >> (node_h + 1)` assumes $s = 0$; the general
-formula for arbitrary $s$ is given in Appendix A.)*
+The formula for $j$ computes the global index of the parent node directly
+from the current loop variable `idx`, the subtree start `s`, and the merge
+height `node_h`, without reference to any previous iteration's address state.
 
 ---
 
-## 4. The Stack Invariant
+## 4. Key Lemmas
+
+### 4.0 The Address Formula Lemma
+
+**This is a central proof obligation.** The C implementation deliberately
+diverges from the RFC pseudocode in how it computes treeIndex. The two
+formulas must be shown to always agree, or the C implementation is not a
+correct realisation of RFC 8391 — regardless of whether the node *values*
+are correct.
+
+**Lemma 0 (Address formula equivalence).** Suppose $s$ is a multiple of
+$2^h$ (the alignment precondition). At any merge performed during the
+processing of leaf $\mathsf{idx} \in [s, s + 2^h)$ at children's height
+$\mathsf{node\_h}$:
+
+1. The RFC stateful formula and the C closed-form formula both produce the
+   same treeIndex value $j$.
+
+2. Explicitly: letting $q = (\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)$,
+   we have:
+   $$j \;=\; (s \gg (\mathsf{node\_h} + 1)) + q$$
+   and this equals the global index of the parent node, i.e. the index of
+   the unique node at height $\mathsf{node\_h} + 1$ whose leaf-range
+   contains $\mathsf{idx}$.
+
+3. The precondition for the merge — that two stack entries of height
+   $\mathsf{node\_h}$ are present — is equivalent to bits $0$ through
+   $\mathsf{node\_h}$ of $(\mathsf{idx} - s)$ all being $1$.
+   This is the key arithmetic fact that makes the shift formula correct:
+   since those low bits are all $1$, the shift $(\mathsf{idx} - s) \gg
+   (\mathsf{node\_h} + 1)$ discards exactly the part of $\mathsf{idx} - s$
+   that is "within" the subtree being merged.
+
+**Proof.** *[To be filled in — induction on the carry structure of
+$(\mathsf{idx} - s)$, using the binary stack invariant.]*
+
+**Remark.** The alignment condition $s \equiv 0 \pmod{2^h}$ is what makes
+$s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). The RFC checks this
+condition explicitly: `if (s % (1 << t) != 0) return -1`. Without it,
+the C formula gives the wrong global index.
+
+---
+
+### 4.1 The Stack Invariant
 
 The key to the equivalence proof is the following invariant, which holds
 after each outer loop iteration.
 
-**Lemma 1 (Stack invariant).** After processing leaves $s, s+1, \ldots,
+**Lemma 1 (Stack invariant).** *(Depends on Lemma 0 for the address part.)* After processing leaves $s, s+1, \ldots,
 s+k-1$ (i.e. after $k$ iterations of the outer loop, $1 \leq k \leq 2^h$),
 the stack $\sigma$ satisfies:
 
@@ -217,6 +296,17 @@ here is a prerequisite for that reduction.
 
 ## Appendix A: Address Conventions (RFC 8391)
 
-*[To be filled in: exact byte layout and field semantics for hash-tree
-addresses, pinning the treeHeight/treeIndex convention and the $s \neq 0$
-index formula.]*
+The treeHeight/treeIndex convention is stated in Section 2.1 and is pinned
+against two RFC algorithms:
+
+- **Algorithm 9** (treeHash): sets `treeHeight` before the merge, increments
+  it *after* `RAND_HASH` returns. At the point of the hash call, treeHeight
+  holds the children's height.
+- **Algorithm 13** (rootFromSig): sets `treeHeight = k` in the loop header
+  when computing the node at height $k+1$.
+
+Both are consistent: the treeHeight field in the address encodes the height
+of the *inputs* to the hash, not the output.
+
+*[To be filled in: exact 32-byte field layout from RFC 8391 Section 2.7.3,
+for use in the mechanised proof.]*
