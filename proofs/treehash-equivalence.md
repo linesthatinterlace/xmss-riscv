@@ -1,6 +1,6 @@
 # Treehash Equivalence: Recursive and Iterative Definitions
 
-**Status**: draft — all proof bodies filled in; under review.
+**Status**: draft — all proof bodies filled in; under review; be sceptical and suspicious and keep an eye out for typos or incorrect statements or definitions.
 
 ---
 
