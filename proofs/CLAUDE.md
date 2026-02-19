@@ -5,10 +5,10 @@
 Formal mathematical proofs supporting the correctness of the XMSS/XMSS-MT
 implementations in `impl/`. Currently contains one document:
 
-- `treehash-equivalence.md` — proof skeleton for the equivalence of the
+- `treehash-equivalence.md` — proof of the equivalence of the
   iterative and recursive definitions of the XMSS Merkle tree, for both
-  XMSS and XMSS-MT. **Status: skeleton only — theorem statements and
-  lemma structure are in place; proof bodies are stubs.**
+  XMSS and XMSS-MT. **Status: complete — all proof bodies filled in;
+  ready for review.**
 
 The goal is eventually to mechanise these proofs in EasyCrypt, but the
 immediate task is a clean, self-contained mathematical document. Do not
@@ -104,26 +104,38 @@ given that the outer fields identify which layer and tree we are in.
   (collision-resistance, second-preimage-resistance) is a separate task.
 - EasyCrypt syntax or mechanisation strategy.
 
+## What has been done
+
+All proof bodies have been filled in:
+
+1. **Lemma 0 proof** (§4.0): Three-part argument. Part 3 establishes the
+   binary carry precondition. Part 2 shows the C closed-form formula
+   computes the correct global index via the alignment of s. Part 1
+   shows the RFC stateful formula agrees via an auxiliary claim about
+   iterated `(x-1)/2`.
+
+2. **Lemma 1 proof** (§4.1): Strong induction on k. The inductive step
+   maps the merge loop to binary carry propagation, using Lemma 0 for
+   address correctness at each merge.
+
+3. **Lemma 2 proof** (§6): Code inspection — the outer fields are
+   inherited from the caller's address copy and never mutated.
+
+4. **Theorem 2 proof** (§6): Combines Lemma 1 (inner-field correctness)
+   and Lemma 2 (outer-field correctness).
+
+5. **Appendix A**: Exact 32-byte field layout from RFC 8391 §2.5, with
+   tables for all three address types, the domain separation rule, and
+   serialisation notes.
+
 ## What remains to be done
 
-The document has complete theorem/lemma statements but stub proofs. In
-order of dependency:
-
-1. **Lemma 0 proof**: arithmetic argument about the closed-form address
-   formula. Self-contained; uses only the binary carry precondition and
-   the alignment of s. This is the most novel argument.
-
-2. **Lemma 1 proof**: induction on k. Base case k=1 is straightforward.
-   Inductive step: process one more leaf, run the merge loop, show the
-   invariant is maintained. The address part of Lemma 1 cites Lemma 0.
-
-3. **Lemma 2 proof**: immediate from code inspection — the outer fields
-   are set by copying adrs before any inner-field mutation. Brief.
-
-4. **Theorem 2 proof**: combine Lemmas 1 and 2. Should be short.
-
-5. **Appendix A**: pin the exact 32-byte field layout from RFC 8391
-   §2.7.3. Needed for any mechanised proof.
+- **Review**: The proofs should be checked by a mathematically
+  sophisticated reader, particularly Lemma 0 (the address formula
+  argument) and the inductive step of Lemma 1.
+- **EasyCrypt mechanisation**: The document is intended as a basis for
+  a future mechanised proof. The formalisation strategy notes in §7
+  remain relevant.
 
 ## Relevant files
 
