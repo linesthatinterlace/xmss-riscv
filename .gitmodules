@@ -4,3 +4,6 @@
 [submodule "third_party/riscv-opcodes"]
 	path = third_party/riscv-opcodes
 	url = https://github.com/riscv/riscv-opcodes.git
+[submodule "third_party/post-quantum-crypto-kat"]
+	path = third_party/post-quantum-crypto-kat
+	url = https://github.com/post-quantum-cryptography/KAT

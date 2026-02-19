@@ -74,6 +74,38 @@ make
 The Makefile links `-lcrypto` (OpenSSL) for SHA-2; SHAKE is handled by
 the bundled `fips202.c`.
 
+## post-quantum-crypto-kat
+
+A git submodule containing NIST ACVP Known Answer Test vectors for post-quantum
+algorithms, including XMSS.
+
+**Status**: Read-only. Used by `impl/c/test/test_xmss_acvp_kat.c` for
+independent cross-validation of XMSS (SHA2, N32) against NIST ACVP vectors.
+
+### What is used
+
+Only the `XMSS/XMSS-{keyGen,sigGen,sigVer}-SHA256-N32-H{10,16,20}/` directories.
+SHAKE256 N32 vectors (ACVP OIDs 16-18) are excluded: they use NIST SP 800-208's
+SHAKE256 hash function, whereas RFC 8391 XMSS-SHAKE uses SHAKE128.
+
+### Regenerating the C header
+
+Run from the repository root:
+
+```bash
+python3 impl/c/test/gen_acvp_vectors.py
+```
+
+This writes `impl/c/test/xmss_acvp_vectors.h`. Commit the generated file —
+no JSON parsing is needed at build time.
+
+### ACVP signature format
+
+ACVP "signature" fields are `RFC_sig || message` (message appended).
+For XMSS-SHA2_10_256 (N32, H10): RFC sig = 2500 bytes, message = 128 bytes,
+total = 2628 bytes. `gen_acvp_vectors.py` splits these and stores only the
+RFC sig portion.
+
 ## riscv-opcodes
 
 A git submodule tracking the upstream RISC-V opcodes database
