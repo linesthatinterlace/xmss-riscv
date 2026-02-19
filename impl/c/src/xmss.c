@@ -167,6 +167,9 @@ int xmss_verify(const xmss_params *p,
     const uint8_t *sig_wots = sig + p->idx_bytes + p->n;
     const uint8_t *auth     = sig + p->idx_bytes + p->n + p->len * p->n;
 
+    /* Validate PK OID matches params */
+    if ((uint32_t)bytes_to_ull(pk, 4) != p->oid) { return XMSS_ERR_VERIFY; }
+
     /* Extract index */
     idx = bytes_to_ull(sig, p->idx_bytes);
 

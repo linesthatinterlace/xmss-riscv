@@ -325,6 +325,9 @@ int xmss_mt_verify(const xmss_params *p,
     const uint8_t *pk_seed = pk + pk_off_seed(p);
     const uint8_t *sig_ptr;
 
+    /* Validate PK OID matches params */
+    if ((uint32_t)bytes_to_ull(pk, 4) != p->oid) { return XMSS_ERR_VERIFY; }
+
     /* Extract index */
     idx = bytes_to_ull(sig, p->idx_bytes);
     if (idx > p->idx_max) { return XMSS_ERR_VERIFY; }

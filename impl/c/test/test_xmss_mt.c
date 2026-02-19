@@ -67,6 +67,16 @@ static void test_roundtrip(void)
         free(bad_sig);
     }
 
+    /* Corrupted PK OID rejection */
+    {
+        uint8_t *bad_pk = (uint8_t *)malloc(t.p.pk_bytes);
+        memcpy(bad_pk, t.pk, t.p.pk_bytes);
+        bad_pk[0] ^= 0x01;
+        ret = xmss_mt_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, bad_pk);
+        TEST_INT("verify corrupted PK OID fails", ret, XMSS_ERR_VERIFY);
+        free(bad_pk);
+    }
+
     /* Wrong message rejection */
     {
         const char *bad_msg = "Hello, XMSS-MT?";

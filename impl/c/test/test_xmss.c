@@ -74,6 +74,18 @@ static int test_one_set(uint32_t oid, const char *name)
         free(bad_sig);
     }
 
+    /* Verify with corrupted PK OID */
+    {
+        uint8_t *bad_pk = (uint8_t *)malloc(t.p.pk_bytes);
+        char tname[64];
+        memcpy(bad_pk, t.pk, t.p.pk_bytes);
+        bad_pk[0] ^= 0x01;
+        ret = xmss_verify(&t.p, (const uint8_t *)msg, msglen, t.sig, bad_pk);
+        snprintf(tname, sizeof(tname), "%s verify corrupted PK OID fails", name);
+        TEST_INT(tname, ret, XMSS_ERR_VERIFY);
+        free(bad_pk);
+    }
+
     /* Verify with different message */
     {
         const char *bad_msg = "Hello, XMSS?";
