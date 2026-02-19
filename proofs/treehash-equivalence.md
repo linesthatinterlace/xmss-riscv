@@ -153,182 +153,50 @@ height `node_h`, without reference to any previous iteration's address state.
 
 ## 4. Key Lemmas
 
-### 4.0 The Address Formula Lemma
+### 4.0 Address Arithmetic
 
 The two variants in Figures 1a and 1b differ only in how they compute
-treeIndex at each merge. The following lemma shows the two formulas
-always agree, so the variants are interchangeable.
+treeIndex at each merge. The following lemma collects the arithmetic
+facts needed to show the two formulas always agree.
 
-**Lemma 0 (Address formula equivalence).** Suppose $s$ is a multiple of
-$2^h$ (the alignment precondition). At any merge performed during the
-processing of leaf $\mathsf{idx} \in [s, s + 2^h)$ at children's height
-$\mathsf{node\_h}$:
+**Lemma 0 (Address arithmetic).** Let $s, i$ be non-negative integers
+with $2^h \mid s$ for some $h \geq 1$, and let $1 \leq m \leq h$.
 
-1. The stateful formula (Figure 1a) and the closed-form formula
-   (Figure 1b) both produce the same treeIndex value $j$.
+(a) **Shift decomposition.**
+$$\left\lfloor \frac{s + i}{2^m} \right\rfloor \;=\; \frac{s}{2^m} + \left\lfloor \frac{i}{2^m} \right\rfloor$$
 
-2. Explicitly: letting $q = (\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)$,
-   we have:
-   $$j \;=\; (s \gg (\mathsf{node\_h} + 1)) + q$$
-   and this equals the global index of the parent node, i.e. the index of
-   the unique node at height $\mathsf{node\_h} + 1$ whose leaf-range
-   contains $\mathsf{idx}$.
+(b) **Iterated halving.** If bits $0$ through $m{-}1$ of a non-negative
+integer $x$ are all $1$, then applying the map $x \mapsto (x - 1)/2$
+exactly $m$ times yields $\lfloor x / 2^m \rfloor$.
 
-3. The precondition for the merge — that two stack entries of height
-   $\mathsf{node\_h}$ are present — is equivalent to bits $0$ through
-   $\mathsf{node\_h}$ of $(\mathsf{idx} - s)$ all being $1$.
-   This is the key arithmetic fact that makes the shift formula correct:
-   since those low bits are all $1$, the shift $(\mathsf{idx} - s) \gg
-   (\mathsf{node\_h} + 1)$ discards exactly the part of $\mathsf{idx} - s$
-   that is "within" the subtree being merged.
+**Proof.**
 
-**Proof.** Write $i := \mathsf{idx} - s$, so $i \in [0, 2^h)$ and
-$\mathsf{idx} = s + i$.
+*(a)* Since $2^m \mid s$ (because $m \leq h$ and $2^h \mid s$), $s / 2^m$
+is an integer. For any integer $a$ and real $r$,
+$\lfloor a + r \rfloor = a + \lfloor r \rfloor$. Apply with
+$a = s / 2^m$ and $r = i / 2^m$. $\square_a$
 
-We prove each part in turn; Part 3 is established first because Parts 1
-and 2 depend on it.
+*(b)* By induction on $m$:
 
----
-
-**Part 3 (merge precondition $\Leftrightarrow$ low bits all 1).**
-
-We show: during the processing of leaf $\mathsf{idx} = s + i$, a merge at
-children's height $\mathsf{node\_h}$ occurs if and only if bits $0$
-through $\mathsf{node\_h}$ of $i$ are all $1$.
-
-Consider the state just before leaf $s + i$ is pushed. By the stack
-invariant (Lemma 1 at $k = i$, which we may assume inductively — see
-Lemma 1's proof for the non-circularity), the stack heights are the
-positions of the set bits of $i$, in decreasing order from bottom to top.
-
-After pushing the new leaf at height $0$, the stack now has the entries
-for the binary decomposition of $i$ plus one additional height-$0$ entry
-on top. The merge loop proceeds as carry propagation for the binary
-increment $i \to i + 1$:
-
-- If bit $0$ of $i$ is $0$: there is no existing height-$0$ entry in the
-  stack. The top entry is the new leaf at height $0$, and the entry below
-  it (if any) has height $\geq 1$. No merge occurs. The resulting stack
-  represents $i + 1$ with bit $0$ set. $\checkmark$
-
-- If bit $0$ of $i$ is $1$: there is an existing height-$0$ entry. The
-  top two entries both have height $0$, so a merge at $\mathsf{node\_h} = 0$
-  occurs. The merged result has height $1$. Now check: if bit $1$ of $i$
-  is $1$, there is an existing height-$1$ entry, and we merge again at
-  $\mathsf{node\_h} = 1$. This continues as long as consecutive bits of
-  $i$ are $1$.
-
-By induction on the merge count: a merge at children's height
-$\mathsf{node\_h}$ occurs if and only if bits $0, 1, \ldots, \mathsf{node\_h}$
-of $i$ are all $1$.
-
-Equivalently, writing $m = \mathsf{node\_h} + 1$:
-
-$$i \bmod 2^m = 2^m - 1 \qquad \Longleftrightarrow \qquad \text{bits } 0 \text{ through } m{-}1 \text{ of } i \text{ are all } 1$$
-
-This is the binary carry precondition. $\square_3$
-
----
-
-**Part 2 (closed-form formula gives the correct global index).**
-
-A node at height $h'$ whose leftmost descendant leaf has global index
-$s'$ (with $2^{h'} \mid s'$) has global node-index $s' / 2^{h'}$.
-Equivalently, the unique node at height $h'$ whose leaf range contains
-a leaf at global position $x$ has index $\lfloor x / 2^{h'} \rfloor$.
-
-At the merge at children's height $\mathsf{node\_h}$, the merged node is
-at height $h' = \mathsf{node\_h} + 1$. Its correct global index is:
-
-$$j = \left\lfloor \frac{\mathsf{idx}}{2^{\mathsf{node\_h}+1}} \right\rfloor$$
-
-We verify that the closed-form formula computes exactly this. Write $m = \mathsf{node\_h} + 1$.
-Since $s$ is a multiple of $2^h$ and $m \leq h$, $s$ is a multiple of $2^m$, so
-$s \gg m = s / 2^m$ is exact (no rounding). Therefore:
-
-$$\frac{\mathsf{idx}}{2^m} = \frac{s + i}{2^m} = \frac{s}{2^m} + \frac{i}{2^m}$$
-
-and
-
-$$\left\lfloor \frac{\mathsf{idx}}{2^m} \right\rfloor = \frac{s}{2^m} + \left\lfloor \frac{i}{2^m} \right\rfloor = (s \gg m) + (i \gg m)$$
-
-where the first equality uses the fact that $s / 2^m$ is an integer.
-
-Since $i = \mathsf{idx} - s$, the formula of Figure 1b —
-$(s \gg (\mathsf{node\_h}+1)) + ((\mathsf{idx} - s) \gg (\mathsf{node\_h}+1))$
-— equals $\lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$, which is the
-correct global index of the parent node. $\square_2$
-
----
-
-**Part 1 (RFC stateful formula agrees with the closed-form).**
-
-We show that the RFC's iterated update
-$\mathsf{treeIndex} \leftarrow (\mathsf{treeIndex} - 1)/2$ produces the
-same result as the closed-form formula.
-
-**Auxiliary claim.** *If bits $0$ through $m{-}1$ of a non-negative integer
-$x$ are all $1$, then applying the map $x \mapsto (x - 1)/2$ exactly $m$
-times yields $\lfloor x / 2^m \rfloor$.*
-
-*Proof of auxiliary claim* by induction on $m$:
-
-- *Base ($m = 0$)*: $\lfloor x / 1 \rfloor = x$. $\checkmark$
+- *Base ($m = 0$)*: zero applications; $\lfloor x / 1 \rfloor = x$. $\checkmark$
 - *Step ($m \to m + 1$)*: Suppose bits $0$ through $m$ of $x$ are all $1$.
-  Bit $0$ of $x$ is $1$, so $x$ is odd, say $x = 2q + 1$.
-  One application gives $(x - 1)/2 = q = \lfloor x / 2 \rfloor$.
-  Now, bits $0$ through $m{-}1$ of $q$: bit $j$ of $q$ equals bit $j{+}1$
+  Bit $0$ is $1$, so $x$ is odd, say $x = 2q + 1$.
+  One application: $(x - 1)/2 = q = \lfloor x / 2 \rfloor$.
+  Bits $0$ through $m{-}1$ of $q$: bit $j$ of $q$ equals bit $j{+}1$
   of $x$, which is $1$ for $j = 0, \ldots, m{-}1$. By the induction
-  hypothesis, applying the map $m$ more times to $q$ gives
-  $\lfloor q / 2^m \rfloor = \lfloor \lfloor x/2 \rfloor / 2^m \rfloor
-  = \lfloor x / 2^{m+1} \rfloor$. $\checkmark$
+  hypothesis, $m$ more applications to $q$ give
+  $\lfloor q / 2^m \rfloor = \lfloor x / 2^{m+1} \rfloor$. $\checkmark$
 
-**Application to the RFC.** In Algorithm 9, after setting
-$\mathsf{treeIndex} = \mathsf{idx}$ and $\mathsf{treeHeight} = 0$, the
-merge loop at each step first applies
-$\mathsf{treeIndex} \leftarrow (\mathsf{treeIndex} - 1)/2$ then calls
-$\mathsf{RAND\_HASH}$, then increments $\mathsf{treeHeight}$.
+$\square_b$
 
-At the point of the hash call for the merge at children's height
-$\mathsf{node\_h}$:
+**Remark (alignment).** The condition $2^h \mid s$ is what makes part (a)
+work: it ensures $s / 2^m$ is exact for all $m \leq h$. Algorithm 9 checks
+this explicitly: `if (s % (1 << t) != 0) return -1`.
 
-- $\mathsf{treeHeight} = \mathsf{node\_h}$ (it was $0$ initially and has
-  been incremented $\mathsf{node\_h}$ times by previous merges).
-- $\mathsf{treeIndex}$ has had the map $x \mapsto (x-1)/2$ applied
-  $\mathsf{node\_h} + 1$ times to the initial value $\mathsf{idx}$.
-
-By Part 3, at this merge, bits $0$ through $\mathsf{node\_h}$ of $i$ are
-all $1$. Since $s$ is a multiple of $2^h$ with $h > \mathsf{node\_h}$, the
-low $\mathsf{node\_h} + 1$ bits of $s$ are all $0$, so bits $0$ through
-$\mathsf{node\_h}$ of $\mathsf{idx} = s + i$ are also all $1$ (no carry
-interaction in those bit positions).
-
-The auxiliary claim (with $x = \mathsf{idx}$ and $m = \mathsf{node\_h} + 1$)
-gives:
-
-$$\mathsf{treeIndex}_{\text{RFC}} = \left\lfloor \frac{\mathsf{idx}}{2^{\mathsf{node\_h}+1}} \right\rfloor$$
-
-By Part 2, this equals the closed-form value. $\square_1$
-
----
-
-**Combining Parts 1–3.** Both formulas compute the global node index
-$\lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$ for the merged
-node at height $\mathsf{node\_h} + 1$. This is the correct treeIndex for
-the canonical address $\mathsf{addr}(\ell, \tau, \mathsf{node\_h}+1, j)$.
-Both algorithms also set $\mathsf{treeHeight} = \mathsf{node\_h}$ (the
-children's height), matching the RFC convention. $\square$
-
-**Remark (alignment).** The condition $s \equiv 0 \pmod{2^h}$ is what makes
-$s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). Algorithm 9 checks this
-explicitly: `if (s % (1 << t) != 0) return -1`. Without it, the closed-form
-formula gives the wrong global index.
-
-**Remark (special case $s = 0$).** When $s = 0$, the closed-form formula
-simplifies to $(\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)
-= \mathsf{idx} \gg (\mathsf{node\_h} + 1)$, since the $s$-term vanishes.
-The general case $s \neq 0$ arises in XMSS-MT (subtrees at non-zero
-offsets) and in naive auth-path computation.
+**Remark (special case $s = 0$).** When $s = 0$, part (a) simplifies to
+$\lfloor i / 2^m \rfloor$, and the closed-form formula becomes just
+$\mathsf{idx} \gg m$. The general case $s \neq 0$ arises in XMSS-MT
+(subtrees at non-zero offsets) and in naive auth-path computation.
 
 ---
 
@@ -337,7 +205,7 @@ offsets) and in naive auth-path computation.
 The key to the equivalence proof is the following invariant, which holds
 after each outer loop iteration.
 
-**Lemma 1 (Stack invariant).** *(Depends on Lemma 0 for the address part.)* After processing leaves $s, s+1, \ldots,
+**Lemma 1 (Stack invariant).** After processing leaves $s, s+1, \ldots,
 s+k-1$ (i.e. after $k$ iterations of the outer loop, $1 \leq k \leq 2^h$),
 the stack $\sigma$ satisfies:
 
@@ -353,14 +221,7 @@ the stack $\sigma$ satisfies:
 3. **Addresses**: every internal hash call made during the computation of
    $\mathsf{Tree}(h_i, s_i)$ used the canonical address $\mathsf{addr}(\ell, \tau, \cdot, \cdot)$.
 
-**Proof.** By strong induction on $k$.
-
-**Dependency note.** Lemma 0's Part 3 (merge precondition) invokes the
-stack invariant to determine the stack state before a push. This is not
-circular: within the inductive step for iteration $k+1$, we use
-Lemma 1 at $k$ (the inductive hypothesis) to obtain the stack state, and
-then Lemma 0 (whose Part 3 only needs that stack state) for address
-correctness of each merge. The proof is well-founded.
+**Proof.** By induction on $k$.
 
 ---
 
@@ -395,46 +256,64 @@ $\mathsf{Tree}(h_j, s_j)$ for the appropriate starting index $s_j$.
 height $0$. The stack now has the entries for the binary decomposition
 of $k$, plus a height-$0$ entry on top.
 
-**Step 3: Merge loop (carry propagation).** Let $k$ have binary
-representation $\ldots b_{r+1}\, 0\, \underbrace{1 \cdots 1}_{r}$,
-i.e., bits $0$ through $r{-}1$ are $1$ and bit $r$ is $0$ (where $r \geq 0$
-is the number of trailing $1$-bits of $k$; if $k = 2^m - 1$ for some $m$,
-then $r = m$ and there is no $0$-bit below position $m$). Then
-$k + 1 = \ldots b_{r+1}\, 1\, \underbrace{0 \cdots 0}_{r}$.
+**Step 3: Merge loop (carry propagation).** Let $r \geq 0$ be the number
+of trailing $1$-bits of $k$ (i.e., $k \bmod 2^r = 2^r - 1$ and either
+$r = h$ or bit $r$ of $k$ is $0$).
 
-The merge loop performs exactly $r$ merges, at children's heights
-$0, 1, \ldots, r{-}1$:
+By the IH (Part 1), the stack from iteration $k$ has entries at heights
+corresponding to the set bits of $k$. In particular, bits $0$ through
+$r{-}1$ of $k$ are all $1$, so the stack has entries at heights
+$0, 1, \ldots, r{-}1$ (among others). After the push in Step 2, the
+top of the stack has two height-$0$ entries (if $r \geq 1$), triggering
+the first merge. Each merge at height $t$ produces a height-$(t{+}1)$
+entry, which pairs with the existing height-$(t{+}1)$ entry from the
+stack (if $t + 1 < r$), triggering the next merge. The loop performs
+exactly $r$ merges, at children's heights $0, 1, \ldots, r{-}1$, and
+stops because the stack has no entry at height $r$ (bit $r$ of $k$ is
+$0$, or we have consumed all entries). This is the binary carry
+propagation for the increment $k \to k + 1$.
 
 *Merge $t$ (at children's height $t$, for $t = 0, 1, \ldots, r{-}1$):*
 
-Before this merge, the top two stack entries both have height $t$. One is
-the entry from the binary decomposition of $k$ at bit position $t$ (which
-exists because bit $t$ of $k$ is $1$); the other is the result of the
-previous merge (or the newly pushed leaf, if $t = 0$).
+The top two stack entries both have height $t$: one from the binary
+decomposition of $k$ (the IH entry at bit position $t$), the other from
+the previous merge (or the pushed leaf, if $t = 0$).
 
-By the induction hypothesis and the construction so far, the left entry
-holds $\mathsf{Tree}(t, s_L)$ and the right entry holds
+By the IH and construction, the left (lower) entry holds
+$\mathsf{Tree}(t, s_L)$ and the right (upper) entry holds
 $\mathsf{Tree}(t, s_R)$ where $s_R = s_L + 2^t$. (For $t = 0$: the left
 entry is $\mathsf{Tree}(0, s + k - 1)$ from the stack at iteration $k$,
 and the right entry is $\mathsf{Tree}(0, s + k)$, the just-pushed leaf.
 For $t > 0$: the left entry is from the stack at iteration $k$, and the
 right entry is the result of merge $t-1$.)
 
-The merge computes:
+**Address correctness for this merge.** The merged node is at height
+$t + 1$; its canonical address requires treeIndex $= s_L / 2^{t+1}$.
 
-$$v = H\!\left(\mathsf{addr}(\ell, \tau, t+1, j),\; \mathsf{Tree}(t, s_L),\; \mathsf{Tree}(t, s_R)\right)$$
+The closed-form formula computes
+$(s \gg (t{+}1)) + ((\mathsf{idx} - s) \gg (t{+}1))$, which equals
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$ by Lemma 0(a). This is the
+global index of the unique node at height $t + 1$ whose leaf range
+contains $\mathsf{idx}$; its leftmost leaf is
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor \cdot 2^{t+1} = s_L$, so
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor = s_L / 2^{t+1}$. $\checkmark$
 
-where $j$ is the treeIndex computed by either formula (they agree by
-Lemma 0 Part 1). By Lemma 0 Part 2, $j = \lfloor \mathsf{idx} / 2^{t+1} \rfloor$, which is the global index of the node at height $t+1$
-whose leaf range contains $\mathsf{idx}$. This node's leftmost leaf is
-$j \cdot 2^{t+1} = s_L$, confirming $j = s_L / 2^{t+1}$.
+The stateful formula (Figure 1a) reaches the same value: at merge $t$,
+the map $x \mapsto (x{-}1)/2$ has been applied $t + 1$ times to
+$\mathsf{idx}$. Since bits $0$ through $t$ of $k = \mathsf{idx} - s$
+are all $1$ (because $t < r$) and the low bits of $s$ are all $0$
+(because $2^h \mid s$), bits $0$ through $t$ of $\mathsf{idx}$ are also
+all $1$. Lemma 0(b) gives
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$. $\checkmark$
 
-By the recursive definition:
+**Value correctness for this merge.** By the recursive definition:
 
 $$\mathsf{Tree}(t+1, s_L) = H\!\left(\mathsf{addr}(\ell, \tau, t+1, s_L / 2^{t+1}),\; \mathsf{Tree}(t, s_L),\; \mathsf{Tree}(t, s_L + 2^t)\right)$$
 
-Since $j = s_L / 2^{t+1}$ and $s_R = s_L + 2^t$, the merge produces
-exactly $\mathsf{Tree}(t+1, s_L)$ with the canonical address. $\checkmark$
+The merge uses the correct address ($s_L / 2^{t+1}$ as shown above),
+the correct left child ($\mathsf{Tree}(t, s_L)$), and the correct right
+child ($\mathsf{Tree}(t, s_R) = \mathsf{Tree}(t, s_L + 2^t)$). So the
+result is $\mathsf{Tree}(t+1, s_L)$. $\checkmark$
 
 **Step 4: Resulting stack.** After $r$ merges, the $r$ entries at heights
 $0, 1, \ldots, r{-}1$ (from the binary decomposition of $k$) and the
@@ -540,7 +419,7 @@ Lemma 1 at $k = 2^{h'}$, the algorithm returns $\mathsf{Tree}(h', 0)$.
 Parameterising by the outer fields, this is
 $\mathsf{Tree}_{\ell, \tau}(h', 0)$. $\checkmark$
 
-**Inner-field correctness.** By Lemma 1 Part 3, every hash-tree merge
+**Inner-field correctness.** By Lemma 1(3), every hash-tree merge
 inside $\mathsf{treehash}$ uses the canonical address
 $\mathsf{addr}(\ell, \tau, h_{\text{node}}{+}1, j)$ for the node it
 computes, with correct $\mathsf{treeHeight}$ and $\mathsf{treeIndex}$.

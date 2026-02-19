@@ -63,33 +63,30 @@ index. This is confirmed by:
 The document's addr(ℓ,τ,h,j) notation means: the address used when
 producing the node at height h, index j — with treeHeight field = h-1.
 
-### The two address computation strategies (Lemma 0 — central obligation)
+### The two address computation strategies (Lemma 0)
 
-The RFC computes treeIndex statefu lly: starts at the leaf index and
-applies (prev-1)/2 at each merge. The C implementation computes it
-statlessly: at each merge at children's height node_h, it computes
+The RFC computes treeIndex statefully: starts at the leaf index and
+applies (prev-1)/2 at each merge. The closed-form variant computes it
+statelessly: at each merge at children's height node_h, it computes
 
   j = (s >> (node_h+1)) + ((idx-s) >> (node_h+1))
 
-These must be shown equal. The key arithmetic fact: at the moment of a
-merge at height node_h, bits 0..node_h of (idx-s) are all 1 (binary
-carry precondition). This means (idx-s) >> (node_h+1) discards exactly
-the "within-subtree" bits, leaving the subtree's position within [s, s+2^h).
-The term s >> (node_h+1) then offsets to the global index — this step
-requires s ≡ 0 (mod 2^h) (the alignment precondition).
+Both produce floor(idx / 2^{node_h+1}), the global index of the merged
+node. Lemma 0 establishes this as a pure arithmetic fact — it is
+straightforward and does not depend on algorithm-specific reasoning.
 
-The xmss-reference (`third_party/xmss-reference/xmss_core.c`) also uses
-the closed-form approach (not the RFC stateful one) but only for s=0, so
-it only needs `idx >> (node_h+1)`. Our s≠0 generalisation is what
-requires proof.
+The alignment precondition s ≡ 0 (mod 2^h) is what makes s >> (node_h+1)
+exact. When s = 0 the formula simplifies to idx >> (node_h+1); the
+general case s ≠ 0 arises in XMSS-MT and in naive auth-path computation.
 
 ### XMSS-MT
 
 XMSS-MT composes d layers of trees, each of height h/d. Outer address
 fields (layer ℓ, tree τ) are set by the caller and must remain invariant
 throughout all hash calls inside treehash — they are never touched by the
-inner computation, only copied. This is Lemma 2 (trivial from code, but
-load-bearing for the theorem). The harder XMSS-MT obligation is that the
+inner computation, only copied. This is Lemma 2 (trivial from the
+algorithm's structure, but load-bearing for the theorem). The harder
+XMSS-MT obligation is that the
 s≠0 formula correctly globalises the node index within the layer's tree,
 given that the outer fields identify which layer and tree we are in.
 
@@ -108,18 +105,18 @@ given that the outer fields identify which layer and tree we are in.
 
 All proof bodies have been filled in:
 
-1. **Lemma 0 proof** (§4.0): Three-part argument. Part 3 establishes the
-   binary carry precondition. Part 2 shows the C closed-form formula
-   computes the correct global index via the alignment of s. Part 1
-   shows the RFC stateful formula agrees via an auxiliary claim about
-   iterated `(x-1)/2`.
+1. **Lemma 0 proof** (§4.0): Pure arithmetic. Part (a) shows the
+   closed-form formula computes the correct global index via the
+   alignment of s. Part (b) shows the RFC stateful formula agrees
+   via an auxiliary claim about iterated `(x-1)/2`.
 
-2. **Lemma 1 proof** (§4.1): Strong induction on k. The inductive step
-   maps the merge loop to binary carry propagation, using Lemma 0 for
-   address correctness at each merge.
+2. **Lemma 1 proof** (§4.1): Strong induction on k. This is the main
+   proof — the inductive step maps the merge loop to binary carry
+   propagation, establishes the merge precondition from the IH, and
+   uses Lemma 0 for address correctness at each merge.
 
-3. **Lemma 2 proof** (§6): Code inspection — the outer fields are
-   inherited from the caller's address copy and never mutated.
+3. **Lemma 2 proof** (§6): By inspection of Algorithm 9 — the outer
+   fields are inherited from the caller's address and never mutated.
 
 4. **Theorem 2 proof** (§6): Combines Lemma 1 (inner-field correctness)
    and Lemma 2 (outer-field correctness).
@@ -131,8 +128,9 @@ All proof bodies have been filled in:
 ## What remains to be done
 
 - **Review**: The proofs should be checked by a mathematically
-  sophisticated reader, particularly Lemma 0 (the address formula
-  argument) and the inductive step of Lemma 1.
+  sophisticated reader. Lemma 1 (the stack invariant induction) is the
+  main proof and deserves the most scrutiny. Lemma 0 is supporting
+  arithmetic.
 - **EasyCrypt mechanisation**: The document is intended as a basis for
   a future mechanised proof. The formalisation strategy notes in §7
   remain relevant.
@@ -140,19 +138,25 @@ All proof bodies have been filled in:
 ## Relevant files
 
 - `proofs/treehash-equivalence.md` — the document itself
-- `impl/c/src/treehash.c` — the C implementation being proved correct
-- `impl/c/src/treehash.h` — API and documentation
 - `doc/rfc8391.txt` — the RFC; Algorithm 9 is at line 1351,
-  Algorithm 13 at line 1700, address layout at §2.7.3
-- `third_party/xmss-reference/xmss_core.c` — reference implementation;
-  treehash is at line 19 (note the comment at line 67 about the address
-  convention, and that it only handles s=0)
+  Algorithm 13 at line 1700, address layout at §2.5
+
+For understanding *why* the proof obligations exist (e.g. the closed-form
+address variant, the s≠0 generalisation), the C implementation in
+`impl/c/src/treehash.c` and its header are useful context.  However, the
+proof document itself is a self-contained mathematical presentation that
+does not reference any implementation.
 
 ## Style guidance
 
+- **The document must be self-contained mathematics.** Do not reference
+  any implementation (C, Jasmin, or otherwise) in the proof document.
+  Algorithms are stated in pseudocode; proofs reference Algorithm 9
+  and the RFC, not source files.
 - Write mathematics precisely. Every quantifier matters.
 - Do not hand-wave the address arguments — they are the point.
-- Lemma 0 is the heart of the document; give it the most care.
+- **Lemma 1 is the heart of the document**; it carries the main
+  inductive argument.  Lemma 0 is supporting arithmetic.
 - The document uses $...$ for inline math and $$...$$ for display math,
   targeting eventual LaTeX conversion. Keep this convention.
 - Proofs should be written to be checkable by a mathematically
