@@ -5,10 +5,10 @@
 Formal mathematical proofs supporting the correctness of the XMSS/XMSS-MT
 implementations in `impl/`. Currently contains one document:
 
-- `treehash-equivalence.md` — proof skeleton for the equivalence of the
+- `treehash-equivalence.md` — proof of the equivalence of the
   iterative and recursive definitions of the XMSS Merkle tree, for both
-  XMSS and XMSS-MT. **Status: skeleton only — theorem statements and
-  lemma structure are in place; proof bodies are stubs.**
+  XMSS and XMSS-MT. **Status: draft — all proof bodies filled in;
+  under review.**
 
 The goal is eventually to mechanise these proofs in EasyCrypt, but the
 immediate task is a clean, self-contained mathematical document. Do not
@@ -63,33 +63,30 @@ index. This is confirmed by:
 The document's addr(ℓ,τ,h,j) notation means: the address used when
 producing the node at height h, index j — with treeHeight field = h-1.
 
-### The two address computation strategies (Lemma 0 — central obligation)
+### The two address computation strategies (Lemma 0)
 
-The RFC computes treeIndex statefu lly: starts at the leaf index and
-applies (prev-1)/2 at each merge. The C implementation computes it
-statlessly: at each merge at children's height node_h, it computes
+The RFC computes treeIndex statefully: starts at the leaf index and
+applies (prev-1)/2 at each merge. The closed-form variant computes it
+statelessly: at each merge at children's height node_h, it computes
 
   j = (s >> (node_h+1)) + ((idx-s) >> (node_h+1))
 
-These must be shown equal. The key arithmetic fact: at the moment of a
-merge at height node_h, bits 0..node_h of (idx-s) are all 1 (binary
-carry precondition). This means (idx-s) >> (node_h+1) discards exactly
-the "within-subtree" bits, leaving the subtree's position within [s, s+2^h).
-The term s >> (node_h+1) then offsets to the global index — this step
-requires s ≡ 0 (mod 2^h) (the alignment precondition).
+Both produce floor(idx / 2^{node_h+1}), the global index of the merged
+node. Lemma 0 establishes this as a pure arithmetic fact — it is
+straightforward and does not depend on algorithm-specific reasoning.
 
-The xmss-reference (`third_party/xmss-reference/xmss_core.c`) also uses
-the closed-form approach (not the RFC stateful one) but only for s=0, so
-it only needs `idx >> (node_h+1)`. Our s≠0 generalisation is what
-requires proof.
+The alignment precondition s ≡ 0 (mod 2^h) is what makes s >> (node_h+1)
+exact. When s = 0 the formula simplifies to idx >> (node_h+1); the
+general case s ≠ 0 arises in XMSS-MT and in naive auth-path computation.
 
 ### XMSS-MT
 
 XMSS-MT composes d layers of trees, each of height h/d. Outer address
 fields (layer ℓ, tree τ) are set by the caller and must remain invariant
 throughout all hash calls inside treehash — they are never touched by the
-inner computation, only copied. This is Lemma 2 (trivial from code, but
-load-bearing for the theorem). The harder XMSS-MT obligation is that the
+inner computation, only copied. This is Lemma 2 (trivial from the
+algorithm's structure, but load-bearing for the theorem). The harder
+XMSS-MT obligation is that the
 s≠0 formula correctly globalises the node index within the layer's tree,
 given that the outer fields identify which layer and tree we are in.
 
@@ -104,43 +101,101 @@ given that the outer fields identify which layer and tree we are in.
   (collision-resistance, second-preimage-resistance) is a separate task.
 - EasyCrypt syntax or mechanisation strategy.
 
+## What has been done
+
+All proof bodies have been filled in:
+
+1. **Lemma 0 proof** (§4.0): Pure arithmetic. Part (a) shows the
+   closed-form formula computes the correct global index via the
+   alignment of s. Part (b) shows the RFC stateful formula agrees
+   via an auxiliary claim about iterated `(x-1)/2`.
+
+2. **Lemma 1 proof** (§4.1): Strong induction on k. This is the main
+   proof — the inductive step maps the merge loop to binary carry
+   propagation, establishes the merge precondition from the IH, and
+   uses Lemma 0 for address correctness at each merge.
+
+3. **Lemma 2 proof** (§6): By inspection of Algorithm 9 — the outer
+   fields are inherited from the caller's address and never mutated.
+
+4. **Theorem 2 proof** (§6): Combines Lemma 1 (inner-field correctness)
+   and Lemma 2 (outer-field correctness).
+
+5. **Appendix A**: Exact 32-byte field layout from RFC 8391 §2.5, with
+   tables for all three address types, the domain separation rule, and
+   serialisation notes.
+
 ## What remains to be done
 
-The document has complete theorem/lemma statements but stub proofs. In
-order of dependency:
+- **Lemma 1 Part 3 (addresses) is imprecise and needs tightening.**
+  The current statement is:
 
-1. **Lemma 0 proof**: arithmetic argument about the closed-form address
-   formula. Self-contained; uses only the binary carry precondition and
-   the alignment of s. This is the most novel argument.
+  > 3. **Addresses**: every internal hash call made during the
+  >    computation of Tree(h_i, s_i) used the canonical address
+  >    addr(ℓ, τ, ·, ·).
 
-2. **Lemma 1 proof**: induction on k. Base case k=1 is straightforward.
-   Inductive step: process one more leaf, run the merge loop, show the
-   invariant is maintained. The address part of Lemma 1 cites Lemma 0.
+  The `·, ·` dots hide the actual claim. The proof body *does* establish
+  that each merge producing a node at height h' with starting leaf s'
+  uses addr(ℓ, τ, h', s'/2^h') — matching the recursive definition —
+  but the invariant *statement* doesn't say this. This makes the address
+  claim hard to audit. The fix: replace the dots with the precise
+  assertion, e.g.:
 
-3. **Lemma 2 proof**: immediate from code inspection — the outer fields
-   are set by copying adrs before any inner-field mutation. Brief.
+  > 3. **Addresses**: every hash-tree merge that produced a node
+  >    Tree(h', s') (in this or any previous iteration) used the
+  >    address addr(ℓ, τ, h', s'/2^{h'}), matching the recursive
+  >    definition.
 
-4. **Theorem 2 proof**: combine Lemmas 1 and 2. Should be short.
+  Related: the connection between the address the algorithm computes
+  (floor(idx / 2^{t+1})) and the address the recursive definition
+  requires (s_L^{(t)} / 2^{t+1}) is established in the proof (via the
+  bit condition) but could be stated more explicitly as the key bridge.
 
-5. **Appendix A**: pin the exact 32-byte field layout from RFC 8391
-   §2.7.3. Needed for any mechanised proof.
+- **XMSS-MT address argument may look too lightweight.** The current
+  §6 decomposes into Lemma 1 (inner fields) + Lemma 2 (outer fields).
+  This decomposition is correct — the reason it looks simple is that
+  Lemma 1 already handles arbitrary aligned s, so the s≠0 generality
+  XMSS-MT needs is baked in from the start. But a reader might worry
+  the XMSS-MT case is being hand-waved. Consider:
+  - Making explicit that ℓ and τ in Lemma 1 are *parameters* (fixed
+    for the entire treehash call), not claims about what Algorithm 9
+    does with them. Lemma 2 is what establishes the algorithm preserves
+    them.
+  - Clarifying that treeIndex in XMSS-MT is the node's index within
+    the tree identified by (ℓ, τ), and that the proof's floor(idx/2^m)
+    gives this local-to-the-tree index because s is the starting leaf
+    within that tree.
+
+- **General review**: The proofs should be checked by a mathematically
+  sophisticated reader. Lemma 1 (the stack invariant induction) is the
+  main proof and deserves the most scrutiny. Lemma 0 is supporting
+  arithmetic.
+- **EasyCrypt mechanisation**: The document is intended as a basis for
+  a future mechanised proof. The formalisation strategy notes in §7
+  remain relevant.
 
 ## Relevant files
 
 - `proofs/treehash-equivalence.md` — the document itself
-- `impl/c/src/treehash.c` — the C implementation being proved correct
-- `impl/c/src/treehash.h` — API and documentation
 - `doc/rfc8391.txt` — the RFC; Algorithm 9 is at line 1351,
-  Algorithm 13 at line 1700, address layout at §2.7.3
-- `third_party/xmss-reference/xmss_core.c` — reference implementation;
-  treehash is at line 19 (note the comment at line 67 about the address
-  convention, and that it only handles s=0)
+  Algorithm 13 at line 1700, address layout at §2.5
+
+For understanding *why* the proof obligations exist (e.g. the closed-form
+address variant, the s≠0 generalisation), the C implementation in
+`impl/c/src/treehash.c` and its header are useful context.  However, the
+proof document itself is a self-contained mathematical presentation that
+does not reference any implementation.
 
 ## Style guidance
 
+- **The document must be self-contained mathematics.** Do not reference
+  any implementation (C, Jasmin, or otherwise) in the proof document.
+  Algorithms are stated in pseudocode; proofs reference Algorithm 9
+  and the RFC, not source files.
 - Write mathematics precisely. Every quantifier matters.
 - Do not hand-wave the address arguments — they are the point.
-- Lemma 0 is the heart of the document; give it the most care.
+- **Lemma 1 is the heart of the document**; it carries the main
+  inductive argument.  Lemma 0 is supporting arithmetic.
 - The document uses $...$ for inline math and $$...$$ for display math,
   targeting eventual LaTeX conversion. Keep this convention.
 - Proofs should be written to be checkable by a mathematically

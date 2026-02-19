@@ -1,6 +1,6 @@
 # Treehash Equivalence: Recursive and Iterative Definitions
 
-**Status**: skeleton — structure only, proofs to be filled in.
+**Status**: draft — all proof bodies filled in; under review.
 
 ---
 
@@ -93,7 +93,7 @@ $$\mathsf{Tree}(0, i) \;:=\; \mathsf{leaf}(i;\, \mathsf{SK},\, \mathsf{PK\_SEED}
 
 $$\mathsf{Tree}(h, s) \;:=\; H\!\left(\mathsf{addr}(\ell, \tau, h, s/2^h),\;\; \mathsf{Tree}(h-1, s),\;\; \mathsf{Tree}(h-1, s + 2^{h-1})\right)$$
 
-The *root* of the XMSS tree is $\mathsf{Tree}(H, 0)$ where $H$ is the tree height.
+The *root* of the XMSS tree is $\mathsf{Tree}(h, 0)$.
 
 ### 3.2 Iterative definition (Algorithm 9)
 
@@ -101,8 +101,8 @@ The iterative algorithm maintains a stack $\sigma$ of pairs $(v, k)$ where $v$
 is an $n$-byte node value and $k \geq 0$ is its height.
 
 There are two variants of interest, which differ only in how they compute the
-address for each merge. Both are given here because establishing their
-equivalence is a central proof obligation (see Lemma 0 below).
+address for each merge. Their equivalence is established by straightforward
+arithmetic (Lemma 0).
 
 **Figure 1a: RFC 8391 Algorithm 9 (stateful address)**
 
@@ -125,10 +125,10 @@ for i = 0 to 2^h - 1:
 return pop(σ)
 ```
 
-**Figure 1b: C implementation (closed-form address)**
+**Figure 1b: Closed-form address variant**
 
-The C implementation (introduced in the initial commit) computes treeIndex
-from scratch at each merge, with no carried address state between iterations:
+This variant computes treeIndex from scratch at each merge, with no
+carried address state between iterations:
 
 ```
 Stack σ := []
@@ -153,53 +153,50 @@ height `node_h`, without reference to any previous iteration's address state.
 
 ## 4. Key Lemmas
 
-### 4.0 The Address Formula Lemma
+### 4.0 Address Arithmetic
 
-**This is a central proof obligation.** The C implementation deliberately
-diverges from the RFC pseudocode in how it computes treeIndex. The two
-formulas must be shown to always agree, or the C implementation is not a
-correct realisation of RFC 8391 — regardless of whether the node *values*
-are correct.
+The two variants in Figures 1a and 1b differ only in how they compute
+treeIndex at each merge. The following lemma collects the arithmetic
+facts needed to show the two formulas always agree.
 
-**Lemma 0 (Address formula equivalence).** Suppose $s$ is a multiple of
-$2^h$ (the alignment precondition). At any merge performed during the
-processing of leaf $\mathsf{idx} \in [s, s + 2^h)$ at children's height
-$\mathsf{node\_h}$:
+**Lemma 0 (Address arithmetic).** Let $s, i$ be non-negative integers
+with $2^h \mid s$ for some $h \geq 1$, and let $1 \leq m \leq h$.
 
-1. The RFC stateful formula and the C closed-form formula both produce the
-   same treeIndex value $j$.
+(a) **Shift decomposition.**
+$$\left\lfloor \frac{s + i}{2^m} \right\rfloor \;=\; \frac{s}{2^m} + \left\lfloor \frac{i}{2^m} \right\rfloor$$
 
-2. Explicitly: letting $q = (\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)$,
-   we have:
-   $$j \;=\; (s \gg (\mathsf{node\_h} + 1)) + q$$
-   and this equals the global index of the parent node, i.e. the index of
-   the unique node at height $\mathsf{node\_h} + 1$ whose leaf-range
-   contains $\mathsf{idx}$.
+(b) **Iterated halving.** If bits $0$ through $m{-}1$ of a non-negative
+integer $x$ are all $1$, then applying the map $x \mapsto (x - 1)/2$
+exactly $m$ times yields $\lfloor x / 2^m \rfloor$.
 
-3. The precondition for the merge — that two stack entries of height
-   $\mathsf{node\_h}$ are present — is equivalent to bits $0$ through
-   $\mathsf{node\_h}$ of $(\mathsf{idx} - s)$ all being $1$.
-   This is the key arithmetic fact that makes the shift formula correct:
-   since those low bits are all $1$, the shift $(\mathsf{idx} - s) \gg
-   (\mathsf{node\_h} + 1)$ discards exactly the part of $\mathsf{idx} - s$
-   that is "within" the subtree being merged.
+**Proof.**
 
-**Proof.** *[To be filled in — induction on the carry structure of
-$(\mathsf{idx} - s)$, using the binary stack invariant.]*
+*(a)* Since $2^m \mid s$ (because $m \leq h$ and $2^h \mid s$), $s / 2^m$
+is an integer. For any integer $a$ and real $r$,
+$\lfloor a + r \rfloor = a + \lfloor r \rfloor$. Apply with
+$a = s / 2^m$ and $r = i / 2^m$. $\square_a$
 
-**Remark (alignment).** The condition $s \equiv 0 \pmod{2^h}$ is what makes
-$s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). The RFC checks this
-explicitly: `if (s % (1 << t) != 0) return -1`. Without it, the C formula
-gives the wrong global index.
+*(b)* By induction on $m$:
 
-**Remark (xmss-reference).** The reference implementation (`third_party/xmss-reference/xmss_core.c`)
-also uses the closed-form approach rather than the RFC's stateful formula,
-and its author explicitly comments on the address convention: *"tree height
-is the 'lower' layer, even though we use the index of the new node on the
-'higher' layer."* However, the reference always starts from $s = 0$ and
-iterates over the whole tree, so it only needs `idx >> (node_h + 1)`.
-The generalisation to arbitrary $s$ — giving `(s >> (node_h+1)) + ((idx-s) >> (node_h+1))` —
-is specific to our implementation and is the novel part requiring proof.
+- *Base ($m = 0$)*: zero applications; $\lfloor x / 1 \rfloor = x$. $\checkmark$
+- *Step ($m \to m + 1$)*: Suppose bits $0$ through $m$ of $x$ are all $1$.
+  Bit $0$ is $1$, so $x$ is odd, say $x = 2q + 1$.
+  One application: $(x - 1)/2 = q = \lfloor x / 2 \rfloor$.
+  Bits $0$ through $m{-}1$ of $q$: bit $j$ of $q$ equals bit $j{+}1$
+  of $x$, which is $1$ for $j = 0, \ldots, m{-}1$. By the induction
+  hypothesis, $m$ more applications to $q$ give
+  $\lfloor q / 2^m \rfloor = \lfloor x / 2^{m+1} \rfloor$. $\checkmark$
+
+$\square_b$
+
+**Remark (alignment).** The condition $2^h \mid s$ is what makes part (a)
+work: it ensures $s / 2^m$ is exact for all $m \leq h$. Algorithm 9 checks
+this explicitly: `if (s % (1 << t) != 0) return -1`.
+
+**Remark (special case $s = 0$).** When $s = 0$, part (a) simplifies to
+$\lfloor i / 2^m \rfloor$, and the closed-form formula becomes just
+$\mathsf{idx} \gg m$. The general case $s \neq 0$ arises in XMSS-MT
+(subtrees at non-zero offsets) and in naive auth-path computation.
 
 ---
 
@@ -208,7 +205,7 @@ is specific to our implementation and is the novel part requiring proof.
 The key to the equivalence proof is the following invariant, which holds
 after each outer loop iteration.
 
-**Lemma 1 (Stack invariant).** *(Depends on Lemma 0 for the address part.)* After processing leaves $s, s+1, \ldots,
+**Lemma 1 (Stack invariant).** After processing leaves $s, s+1, \ldots,
 s+k-1$ (i.e. after $k$ iterations of the outer loop, $1 \leq k \leq 2^h$),
 the stack $\sigma$ satisfies:
 
@@ -218,13 +215,155 @@ the stack $\sigma$ satisfies:
 
 2. **Values**: if the $i$-th stack entry (from the bottom, 0-indexed) has
    height $h_i$, then its value is $\mathsf{Tree}(h_i,\, s_i)$, where
-   $s_i = s + \sum_{j > i} 2^{h_j}$ is the starting leaf of the
-   corresponding canonical subtree.
+   $s_i = s + \sum_{j < i} 2^{h_j}$ is the starting leaf of the
+   corresponding canonical subtree. (That is, $s_i$ is $s$ plus the
+   total number of leaves covered by entries below entry $i$.)
 
 3. **Addresses**: every internal hash call made during the computation of
    $\mathsf{Tree}(h_i, s_i)$ used the canonical address $\mathsf{addr}(\ell, \tau, \cdot, \cdot)$.
 
-**Proof.** By induction on $k$. *[To be filled in.]*
+**Proof.** By induction on $k$.
+
+---
+
+**Base case ($k = 1$).** After processing leaf $s$ (the first iteration,
+$\mathsf{idx} = s$, $i = 0$):
+
+The leaf is pushed at height $0$. The merge condition checks whether the
+top two entries have equal height; since the stack has only one entry,
+no merge occurs.
+
+- *Heights*: $k = 1 = (1)_2$, whose only set bit is at position $0$. The
+  stack has one entry at height $0$. $\checkmark$
+- *Values*: The entry is $(\mathsf{leaf}(s), 0)$. By the recursive definition,
+  $\mathsf{Tree}(0, s) = \mathsf{leaf}(s)$. $\checkmark$
+- *Addresses*: No internal hash calls were made (the leaf computation
+  uses OTS and L-tree addresses, which are not hash-tree addresses and
+  are outside the scope of this invariant). Vacuously true. $\checkmark$
+
+---
+
+**Inductive step ($k \to k + 1$, for $1 \leq k < 2^h$).**
+
+Assume the invariant holds after $k$ iterations. We process leaf
+$\mathsf{idx} = s + k$ (the $(k+1)$-th leaf, with $i = k$).
+
+**Step 1: State before the push.** By the induction hypothesis, the
+stack heights are the set-bit positions of $k$ in decreasing order
+(bottom to top), and each entry at height $h_j$ holds
+$\mathsf{Tree}(h_j, s_j)$ for the appropriate starting index $s_j$.
+
+**Step 2: Push.** The new leaf $\mathsf{leaf}(s + k)$ is pushed at
+height $0$. The stack now has the entries for the binary decomposition
+of $k$, plus a height-$0$ entry on top.
+
+**Step 3: Merge loop (carry propagation).** Let $r \geq 0$ be the number
+of trailing $1$-bits of $k$ (i.e., $k \bmod 2^r = 2^r - 1$ and either
+$r = h$ or bit $r$ of $k$ is $0$).
+
+By the IH (Part 1), the stack from iteration $k$ has entries at heights
+corresponding to the set bits of $k$. In particular, bits $0$ through
+$r{-}1$ of $k$ are all $1$, so the stack has entries at heights
+$0, 1, \ldots, r{-}1$ (among others). After the push in Step 2, the
+top of the stack has two height-$0$ entries (if $r \geq 1$), triggering
+the first merge. Each merge at height $t$ produces a height-$(t{+}1)$
+entry, which pairs with the existing height-$(t{+}1)$ entry from the
+stack (if $t + 1 < r$), triggering the next merge. The loop performs
+exactly $r$ merges, at children's heights $0, 1, \ldots, r{-}1$, and
+stops because the stack has no entry at height $r$ (bit $r$ of $k$ is
+$0$, or we have consumed all entries). This is the binary carry
+propagation for the increment $k \to k + 1$.
+
+*Merge $t$ (at children's height $t$, for $t = 0, 1, \ldots, r{-}1$):*
+
+The top two stack entries both have height $t$: one from the binary
+decomposition of $k$ (the IH entry at bit position $t$), the other from
+the previous merge (or the pushed leaf, if $t = 0$).
+
+We write $s_L^{(t)}$ for the starting leaf of the left (lower) entry
+at this merge. The left entry holds $\mathsf{Tree}(t, s_L^{(t)})$
+(from the IH) and the right entry holds $\mathsf{Tree}(t, s_R^{(t)})$
+where $s_R^{(t)} = s_L^{(t)} + 2^t$ (from the IH and construction).
+
+**Identifying $s_L^{(t)}$.** We claim $s_L^{(t)} = \mathsf{idx} - 2^{t+1} + 1$,
+i.e. the two children together cover the $2^{t+1}$ leaves ending at
+$\mathsf{idx} = s + k$.
+
+*For $t = 0$*: the left entry is the IH's topmost entry (height $0$),
+which by the IH has starting leaf
+$s + \sum_{j < |\sigma|-1} 2^{h_j} = s + (k - 1) = \mathsf{idx} - 1$.
+The right entry is the pushed leaf at $\mathsf{idx}$. So
+$s_L^{(0)} = \mathsf{idx} - 1 = \mathsf{idx} - 2^1 + 1$. $\checkmark$
+
+*For $t > 0$*: the right entry is the result of merge $t{-}1$, which
+(by the case $t{-}1$ of this analysis) covers $2^t$ leaves ending at
+$\mathsf{idx}$, starting at $\mathsf{idx} - 2^t + 1$. The left entry
+is the IH entry at height $t$, which by contiguity of the IH's subtree
+decomposition ends where the right child begins: its range is
+$[s_L^{(t)},\; \mathsf{idx} - 2^t + 1)$, of size $2^t$. So
+$s_L^{(t)} = \mathsf{idx} - 2^t + 1 - 2^t = \mathsf{idx} - 2^{t+1} + 1$. $\checkmark$
+
+**Bit condition.** Since $t < r$, bits $0$ through $t$ of
+$k = \mathsf{idx} - s$ are all $1$. Because $2^h \mid s$ (with $h > t$),
+the low $t + 1$ bits of $s$ are $0$, so bits $0$ through $t$ of
+$\mathsf{idx} = s + k$ are also all $1$. In particular,
+$\mathsf{idx} \bmod 2^{t+1} = 2^{t+1} - 1$.
+
+**Address correctness.** The merged node is at height $t + 1$; its
+canonical address requires treeIndex $= s_L^{(t)} / 2^{t+1}$.
+
+By the bit condition:
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor \cdot 2^{t+1}
+= \mathsf{idx} - (\mathsf{idx} \bmod 2^{t+1})
+= \mathsf{idx} - (2^{t+1} - 1) = s_L^{(t)}$.
+So $\lfloor \mathsf{idx} / 2^{t+1} \rfloor = s_L^{(t)} / 2^{t+1}$. $\checkmark$
+
+The closed-form formula computes
+$(s \gg (t{+}1)) + ((\mathsf{idx} - s) \gg (t{+}1))$, which equals
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$ by Lemma 0(a). $\checkmark$
+
+The stateful formula (Figure 1a) reaches the same value: the map
+$x \mapsto (x{-}1)/2$ has been applied $t + 1$ times to $\mathsf{idx}$,
+and the bit condition gives $\lfloor \mathsf{idx} / 2^{t+1} \rfloor$
+by Lemma 0(b). $\checkmark$
+
+**Value correctness.** By the recursive definition:
+
+$$\mathsf{Tree}(t+1, s_L^{(t)}) = H\!\left(\mathsf{addr}(\ell, \tau, t+1, s_L^{(t)} / 2^{t+1}),\; \mathsf{Tree}(t, s_L^{(t)}),\; \mathsf{Tree}(t, s_L^{(t)} + 2^t)\right)$$
+
+The merge uses the correct address ($s_L^{(t)} / 2^{t+1}$ as shown above),
+the correct left child, and the correct right child
+($s_R^{(t)} = s_L^{(t)} + 2^t$). So the result is
+$\mathsf{Tree}(t+1, s_L^{(t)})$. $\checkmark$
+
+**Step 4: Resulting stack.** After $r$ merges, the $r$ IH entries at
+heights $0, 1, \ldots, r{-}1$ and the pushed leaf have been replaced by
+a single entry at height $r$, holding $\mathsf{Tree}(r, s')$ where
+$s' = s_L^{(r-1)} = \mathsf{idx} - 2^r + 1 = s + k - 2^r + 1$.
+
+The remaining entries (at heights corresponding to bits $> r$ of $k$,
+which are the same as bits $> r$ of $k + 1$) are unchanged. The
+resulting stack heights are the set-bit positions of $k + 1$, in
+decreasing order.
+
+**Verification of starting indices.** We must check Part 2 of the
+invariant for $k + 1$. The starting leaf of the new height-$r$ entry
+is $s' = s + k - 2^r + 1$. By the Part 2 formula, it should equal
+$s + \sum_{j < i'} 2^{h_j}$, where the sum is over entries below it in
+the new stack. These are exactly the unchanged IH entries at bit
+positions $> r$ of $k$, whose sizes sum to
+$k - (2^0 + 2^1 + \cdots + 2^{r-1}) = k - (2^r - 1)$. So the formula
+gives $s + k - 2^r + 1 = s'$. $\checkmark$
+
+The unchanged entries retain their IH starting leaves (the entries below
+them are also unchanged). $\checkmark$
+
+**Address correctness.** Every hash call in the merge loop uses a
+canonical address by the argument in Step 3 (via Lemma 0). Hash calls
+from previous iterations are canonical by the induction hypothesis.
+$\checkmark$
+
+This completes the induction. $\square$
 
 **Corollary (Termination and correctness).** At $k = 2^h$, $|\sigma| = 1$
 and $\sigma[0] = (\mathsf{Tree}(h, s), h)$. The algorithm returns
@@ -234,22 +373,21 @@ $\mathsf{Tree}(h, s)$ with all internal hashes at canonical addresses.
 
 ## 5. Main Theorem: XMSS
 
-**Theorem 1 (Iterative–recursive equivalence, XMSS).** Let $p$ be an XMSS
-parameter set with tree height $H$. Let $\mathsf{SK}$, $\mathsf{PK\_SEED}$ be
-fixed. Then:
+**Theorem 1 (Iterative–recursive equivalence, XMSS).** Let $\mathsf{SK}$,
+$\mathsf{PK\_SEED}$ be fixed. Then:
 
-$$\mathsf{treehash}(\mathsf{SK}, \mathsf{PK\_SEED}, 0, 2^H) \;=\; \mathsf{Tree}(H, 0)$$
+$$\mathsf{treehash}(\mathsf{SK}, \mathsf{PK\_SEED}, 0, 2^h) \;=\; \mathsf{Tree}(h, 0)$$
 
 and every call to $H$ inside $\mathsf{treehash}$ uses the canonical address
 for the node it computes.
 
-**Proof.** Immediate from Lemma 1 at $k = 2^H$. $\square$
+**Proof.** Immediate from Lemma 1 at $k = 2^h$. $\square$
 
 ---
 
 ## 6. Extension to XMSS-MT
 
-XMSS-MT composes $d$ layers of XMSS trees, each of height $h' = H/d$.
+XMSS-MT composes $d$ layers of XMSS trees, each of height $h' = h/d$.
 A tree at layer $\ell$ and tree-index $\tau$ is computed by calling treehash
 with outer address fields fixed to $(\ell, \tau)$.
 
@@ -260,17 +398,34 @@ The additional difficulty over the single-tree case is:
   and $\mathsf{tree}$. The proof must track that these outer fields are
   consistently set for every hash call throughout the computation.
 
-- **Offset starts ($s \neq 0$)**: trees at layer $\ell > 0$ are indexed
-  within their layer; the starting leaf $s$ for a subtree call is not
-  necessarily 0. The address index formula must be shown to correctly
-  globalise the local node index.
+- **Offset starts ($s \neq 0$)**: while the full tree at each layer uses
+  $s = 0$, subtree computations (e.g. for auth paths) use $s \neq 0$.
+  Lemma 1 already handles arbitrary aligned $s$, so this requires no
+  additional argument beyond the outer-field tracking.
 
 **Lemma 2 (Outer-field consistency).** For any call to $\mathsf{treehash}$
 with outer fields $(\ell, \tau)$ and start $s$, every hash call inside uses
 an address with $\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$.
 
-**Proof.** *[To be filled in — follows from the address being copied from
-the caller's adrs and only inner fields being mutated.]*
+**Proof.** By inspection of Algorithm 9 (Figures 1a/1b).
+
+Every address used inside $\mathsf{treehash}$ is constructed by copying
+the caller-provided address $\mathsf{adrs}$ and then modifying only
+*inner* fields: $\mathsf{type}$, and whichever type-specific fields
+apply ($\mathsf{OTS}$, $\mathsf{LTree}$, $\mathsf{treeHeight}$,
+$\mathsf{treeIndex}$, etc.).
+
+By the address structure (Appendix A), the outer fields $\mathsf{layer}$
+(word 0) and $\mathsf{tree}$ (words 1–2) are distinct from the type
+word (word 3) and the type-specific fields (words 4–7). The
+$\mathsf{setType}$ operation zeroes words 4–7 (per RFC 8391, §2.5) but
+does not touch words 0–2. No other operation in Algorithm 9 modifies
+words 0–2.
+
+Therefore, every address used inside $\mathsf{treehash}$ — whether for
+OTS key generation, L-tree compression, or hash-tree merging — carries
+$\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$, inherited from the
+caller's $\mathsf{adrs}$. $\square$
 
 **Theorem 2 (Iterative–recursive equivalence, XMSS-MT).** For each layer
 $\ell \in [0, d)$ and tree-index $\tau$, the iterative treehash with outer
@@ -278,7 +433,34 @@ fields $(\ell, \tau)$ computes $\mathsf{Tree}_{\ell,\tau}(h', 0)$ (the
 recursive tree for that layer and tree), with every internal hash call at
 the canonical address for that layer and tree.
 
-**Proof.** *[To be filled in — combine Lemma 1 and Lemma 2.]*
+**Proof.** Fix a layer $\ell$ and tree index $\tau$. The XMSS-MT
+construction calls $\mathsf{treehash}$ with parameters $s = 0$,
+$t = 2^{h'}$, and an address $\mathsf{adrs}$ with
+$\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$.
+
+**Value correctness.** Since $s = 0$ is trivially a multiple of
+$2^{h'}$, the alignment precondition of Lemma 1 is satisfied. By
+Lemma 1 at $k = 2^{h'}$, the algorithm returns $\mathsf{Tree}(h', 0)$.
+Parameterising by the outer fields, this is
+$\mathsf{Tree}_{\ell, \tau}(h', 0)$. $\checkmark$
+
+**Inner-field correctness.** By Lemma 1(3), every hash-tree merge
+inside $\mathsf{treehash}$ uses the canonical address
+$\mathsf{addr}(\ell, \tau, h_{\text{node}}{+}1, j)$ for the node it
+computes, with correct $\mathsf{treeHeight}$ and $\mathsf{treeIndex}$.
+$\checkmark$
+
+**Outer-field correctness.** By Lemma 2, every address used inside
+$\mathsf{treehash}$ — including OTS, L-tree, and hash-tree addresses —
+carries $\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$, inherited
+from the caller. $\checkmark$
+
+Combining these, the iterative computation produces
+$\mathsf{Tree}_{\ell, \tau}(h', 0)$ with every internal hash call at
+the canonical address for layer $\ell$, tree $\tau$. Since this holds
+for all $(\ell, \tau)$, and the layers use the same hash function $H$
+with domain separation achieved entirely through these address fields,
+the full XMSS-MT tree is correctly computed. $\square$
 
 ---
 
@@ -289,8 +471,9 @@ A mechanised proof in EasyCrypt (or similar) will need to:
 - Represent the stack as a concrete data structure with a bounded-size
   invariant; the bound $h+1$ follows from Lemma 1(1).
 - State the loop invariant (Lemma 1) as a loop annotation in a program logic.
-- Handle the address arithmetic (`j := idx >> (node_h + 1)`) concretely;
-  this is where most of the arithmetic reasoning lives.
+- Handle the address arithmetic (Lemma 0) and the carry-propagation
+  argument (Lemma 1 Step 3) concretely in the proof assistant's
+  integer/bitvector theory.
 - Lift from the single-tree to the multi-tree case by parametrising over
   $(\ell, \tau)$ and showing independence of inner-field computations from
   outer fields.
@@ -317,5 +500,59 @@ against two RFC algorithms:
 Both are consistent: the treeHeight field in the address encodes the height
 of the *inputs* to the hash, not the output.
 
-*[To be filled in: exact 32-byte field layout from RFC 8391 Section 2.7.3,
-for use in the mechanised proof.]*
+The ADRS structure is 32 bytes, consisting of 8 big-endian 32-bit words.
+Words 0–2 are shared across all address types ("outer fields"); word 3
+is the type discriminator; words 4–7 are type-specific ("inner fields").
+
+**Common prefix (all types):**
+
+| Word | Bytes   | Field           | Width   |
+|------|---------|-----------------|---------|
+| 0    | 0–3     | layer address   | 32 bits |
+| 1    | 4–7     | tree address (high) | 32 bits |
+| 2    | 8–11    | tree address (low)  | 32 bits |
+| 3    | 12–15   | type            | 32 bits |
+
+The tree address is a 64-bit value stored across words 1 (most
+significant) and 2 (least significant).
+
+**Type 0 — OTS hash address:**
+
+| Word | Bytes   | Field           |
+|------|---------|-----------------|
+| 4    | 16–19   | OTS address     |
+| 5    | 20–23   | chain address   |
+| 6    | 24–27   | hash address    |
+| 7    | 28–31   | keyAndMask      |
+
+**Type 1 — L-tree address:**
+
+| Word | Bytes   | Field           |
+|------|---------|-----------------|
+| 4    | 16–19   | L-tree address  |
+| 5    | 20–23   | tree height     |
+| 6    | 24–27   | tree index      |
+| 7    | 28–31   | keyAndMask      |
+
+**Type 2 — Hash tree address:**
+
+| Word | Bytes   | Field           |
+|------|---------|-----------------|
+| 4    | 16–19   | padding (= 0)  |
+| 5    | 20–23   | tree height     |
+| 6    | 24–27   | tree index      |
+| 7    | 28–31   | keyAndMask      |
+
+**Domain separation rule (RFC 8391, §2.5).** Whenever the type word
+(word 3) is changed, words 4–7 must be zeroed before any type-specific
+fields are set. This prevents stale field values from a previous type
+from leaking into the new address.
+
+**Serialisation.** The 8 words are serialised in order, each in
+big-endian, producing the 32-byte value passed to hash functions. For a
+mechanised proof, the address is most conveniently modelled as an array
+of 8 unsigned 32-bit words with big-endian serialisation.
+
+**Errata 7900 note.** Errata 7900 corrects the SK serialisation byte
+layout but does not affect the ADRS structure. The address layout above
+is unchanged by the errata.
