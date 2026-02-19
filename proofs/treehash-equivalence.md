@@ -187,10 +187,19 @@ $\mathsf{node\_h}$:
 **Proof.** *[To be filled in — induction on the carry structure of
 $(\mathsf{idx} - s)$, using the binary stack invariant.]*
 
-**Remark.** The alignment condition $s \equiv 0 \pmod{2^h}$ is what makes
+**Remark (alignment).** The condition $s \equiv 0 \pmod{2^h}$ is what makes
 $s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). The RFC checks this
-condition explicitly: `if (s % (1 << t) != 0) return -1`. Without it,
-the C formula gives the wrong global index.
+explicitly: `if (s % (1 << t) != 0) return -1`. Without it, the C formula
+gives the wrong global index.
+
+**Remark (xmss-reference).** The reference implementation (`third_party/xmss-reference/xmss_core.c`)
+also uses the closed-form approach rather than the RFC's stateful formula,
+and its author explicitly comments on the address convention: *"tree height
+is the 'lower' layer, even though we use the index of the new node on the
+'higher' layer."* However, the reference always starts from $s = 0$ and
+iterates over the whole tree, so it only needs `idx >> (node_h + 1)`.
+The generalisation to arbitrary $s$ — giving `(s >> (node_h+1)) + ((idx-s) >> (node_h+1))` —
+is specific to our implementation and is the novel part requiring proof.
 
 ---
 
