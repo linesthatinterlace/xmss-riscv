@@ -110,7 +110,10 @@ static void test_sequential(void)
     xmss_mt_test_ctx_init(&t, TEST_OID);
 
     test_rng_reset(0x1111222233334444ULL);
-    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    rc = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "sequential keygen");
+    TEST_INT(label, rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_mt_test_ctx_free(&t); return; }
 
     for (i = 0; i < nsigs; i++) {
         uint8_t msg[4];
@@ -150,7 +153,10 @@ static void test_tree_boundary(void)
     printf("  tree_height=%u, boundary at idx=%u\n", t.p.tree_height, boundary);
 
     test_rng_reset(0xAAAABBBBCCCCDDDDULL);
-    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    rc = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "tree_boundary keygen");
+    TEST_INT(label, rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_mt_test_ctx_free(&t); return; }
 
     /* Sign up to the boundary and a few past it */
     for (i = 0; i < (int)(boundary + 3); i++) {
@@ -263,7 +269,10 @@ static void test_message_boundaries(void)
     xmss_mt_test_ctx_init(&t, TEST_OID);
 
     test_rng_reset(0x0102030405060708ULL);
-    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    ret = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "XMSS-MT keygen");
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { xmss_mt_test_ctx_free(&t); return; }
 
     /* Empty message */
     ret = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)"", 0, t.sk, t.state, 0);
@@ -299,14 +308,23 @@ static void test_cross_key(void)
     xmss_mt_test_ctx_init(&b, TEST_OID);
 
     test_rng_reset(0x1122334455667788ULL);
-    xmss_mt_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
-    test_rng_reset(0x8877665544332211ULL);
-    xmss_mt_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
+    ret = xmss_mt_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
+    TEST_INT("cross-key keygen_a", ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
 
-    xmss_mt_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
+    test_rng_reset(0x8877665544332211ULL);
+    ret = xmss_mt_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
+    TEST_INT("cross-key keygen_b", ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
+
+    ret = xmss_mt_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
+    TEST_INT("cross-key sign", ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
+
     ret = xmss_mt_verify(&a.p, (const uint8_t *)msg, msglen, a.sig, b.pk);
     TEST_INT("cross-key rejection", ret, XMSS_ERR_VERIFY);
 
+done:
     xmss_mt_test_ctx_free(&a);
     xmss_mt_test_ctx_free(&b);
 }
@@ -317,12 +335,15 @@ static void test_remaining_sigs(void)
     xmss_mt_test_ctx t;
     uint64_t rem;
     uint32_t i;
+    int rc;
 
     printf("\n--- remaining signatures query ---\n");
 
     xmss_mt_test_ctx_init(&t, TEST_OID);
     test_rng_reset(0xDEADC0DEULL);
-    xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    rc = xmss_mt_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    TEST_INT("MT: keygen", rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_mt_test_ctx_free(&t); return; }
 
     /* After keygen: remaining == 2^h */
     rem = xmss_mt_remaining_sigs(&t.p, t.sk);
@@ -330,7 +351,9 @@ static void test_remaining_sigs(void)
              (long long)rem, (long long)(t.p.idx_max + 1));
 
     /* After one signature: remaining == 2^h - 1 */
-    xmss_mt_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    rc = xmss_mt_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    TEST_INT("MT: sign idx=0", rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_mt_test_ctx_free(&t); return; }
     rem = xmss_mt_remaining_sigs(&t.p, t.sk);
     TEST_INT("MT: remaining after 1 sign == 2^h-1",
              (long long)rem, (long long)(t.p.idx_max));

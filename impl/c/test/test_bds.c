@@ -79,7 +79,10 @@ static void test_sequential_k(uint32_t oid, const char *name, uint32_t bds_k)
     xmss_test_ctx_init(&t, oid);
 
     test_rng_reset(99);
-    xmss_keygen(&t.p, t.pk, t.sk, t.state, bds_k, test_randombytes);
+    rc = xmss_keygen(&t.p, t.pk, t.sk, t.state, bds_k, test_randombytes);
+    snprintf(label, sizeof(label), "%s (k=%u): keygen", name, bds_k);
+    TEST(label, rc == XMSS_OK);
+    if (rc != XMSS_OK) { xmss_test_ctx_free(&t); return; }
 
     for (i = 0; i < 20; i++) {
         uint8_t msg[4];

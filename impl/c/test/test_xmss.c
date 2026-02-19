@@ -126,17 +126,28 @@ static void test_cross_key_rejection(uint32_t oid, const char *name)
     xmss_test_ctx_init(&b, oid);
 
     test_rng_reset(0xABCDEF01ULL);
-    xmss_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
-    test_rng_reset(0x12345678ULL);
-    xmss_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
+    ret = xmss_keygen(&a.p, a.pk, a.sk, a.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s cross-key keygen_a", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
 
-    xmss_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
+    test_rng_reset(0x12345678ULL);
+    ret = xmss_keygen(&b.p, b.pk, b.sk, b.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s cross-key keygen_b", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
+
+    ret = xmss_sign(&a.p, a.sig, (const uint8_t *)msg, msglen, a.sk, a.state, 0);
+    snprintf(label, sizeof(label), "%s cross-key sign", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
 
     /* Sig made with key A must not verify under key B */
     ret = xmss_verify(&a.p, (const uint8_t *)msg, msglen, a.sig, b.pk);
     snprintf(label, sizeof(label), "%s cross-key rejection", name);
     TEST_INT(label, ret, XMSS_ERR_VERIFY);
 
+done:
     xmss_test_ctx_free(&a);
     xmss_test_ctx_free(&b);
 }
@@ -145,18 +156,27 @@ static void test_cross_key_rejection(uint32_t oid, const char *name)
 static void test_targeted_bitflips(uint32_t oid, const char *name)
 {
     xmss_test_ctx t;
-    uint8_t *bad_sig;
+    uint8_t *bad_sig = NULL;
     const char *msg = "bitflip test";
     size_t msglen = strlen(msg);
     char label[128];
+    int ret;
 
     xmss_test_ctx_init(&t, oid);
 
-    bad_sig = (uint8_t *)malloc(t.p.sig_bytes);
-
     test_rng_reset(0xFEDCBA9876543210ULL);
-    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
-    xmss_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
+    ret = xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s keygen", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
+
+    ret = xmss_sign(&t.p, t.sig, (const uint8_t *)msg, msglen, t.sk, t.state, 0);
+    snprintf(label, sizeof(label), "%s sign", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { goto done; }
+
+    bad_sig = (uint8_t *)malloc(t.p.sig_bytes);
+    if (!bad_sig) { TEST("malloc", 0); goto done; }
 
     /* Flip a bit in the idx field (first byte of sig) */
     memcpy(bad_sig, t.sig, t.p.sig_bytes);
@@ -179,6 +199,7 @@ static void test_targeted_bitflips(uint32_t oid, const char *name)
     TEST_INT(label, xmss_verify(&t.p, (const uint8_t *)msg, msglen, bad_sig, t.pk),
              XMSS_ERR_VERIFY);
 
+done:
     free(bad_sig);
     xmss_test_ctx_free(&t);
 }
@@ -196,7 +217,10 @@ static void test_message_boundaries(uint32_t oid, const char *name)
     xmss_test_ctx_init(&t, oid);
 
     test_rng_reset(0x0102030405060708ULL);
-    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    ret = xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s keygen", name);
+    TEST_INT(label, ret, XMSS_OK);
+    if (ret != XMSS_OK) { xmss_test_ctx_free(&t); return; }
 
     /* Empty message */
     ret = xmss_sign(&t.p, t.sig, (const uint8_t *)"", 0, t.sk, t.state, 0);
@@ -228,7 +252,10 @@ static void test_sequential(uint32_t oid, const char *name)
     xmss_test_ctx_init(&t, oid);
 
     test_rng_reset(99);
-    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    rc = xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s keygen", name);
+    TEST_INT(label, rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_test_ctx_free(&t); return; }
 
     for (i = 0; i < 20; i++) {
         uint8_t msg[4];
@@ -259,10 +286,14 @@ static void test_remaining_sigs(uint32_t oid, const char *name)
     uint64_t rem;
     char label[128];
     uint32_t i;
+    int rc;
 
     xmss_test_ctx_init(&t, oid);
     test_rng_reset(0xCAFEBABEULL);
-    xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    rc = xmss_keygen(&t.p, t.pk, t.sk, t.state, 0, test_randombytes);
+    snprintf(label, sizeof(label), "%s: keygen", name);
+    TEST_INT(label, rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_test_ctx_free(&t); return; }
 
     /* After keygen: remaining == 2^h */
     rem = xmss_remaining_sigs(&t.p, t.sk);
@@ -270,7 +301,10 @@ static void test_remaining_sigs(uint32_t oid, const char *name)
     TEST_INT(label, (long long)rem, (long long)(t.p.idx_max + 1));
 
     /* After one signature: remaining == 2^h - 1 */
-    xmss_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    rc = xmss_sign(&t.p, t.sig, (const uint8_t *)"x", 1, t.sk, t.state, 0);
+    snprintf(label, sizeof(label), "%s: sign idx=0", name);
+    TEST_INT(label, rc, XMSS_OK);
+    if (rc != XMSS_OK) { xmss_test_ctx_free(&t); return; }
     rem = xmss_remaining_sigs(&t.p, t.sk);
     snprintf(label, sizeof(label), "%s: remaining after 1 sign == 2^h-1", name);
     TEST_INT(label, (long long)rem, (long long)(t.p.idx_max));

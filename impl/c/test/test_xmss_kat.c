@@ -71,9 +71,11 @@ static void run_kat(const kat_vector_t *v)
     xmss_bds_state *state;
     uint8_t *pk, *sk, *sig;
     uint8_t msg[1] = {37};
+    uint8_t dummy[1] = {0};
     uint8_t fp[10], expected[10];
     char label[128];
     uint32_t i;
+    uint32_t target_idx;
 
     if (xmss_params_from_oid(&p, v->oid) != 0) {
         snprintf(label, sizeof(label), "%s: params", v->name);
@@ -98,7 +100,11 @@ static void run_kat(const kat_vector_t *v)
     kat_seed_off = 0;
 
     /* Keygen with deterministic seeds (BDS) */
-    xmss_keygen(&p, pk, sk, state, 0, kat_randombytes);
+    if (xmss_keygen(&p, pk, sk, state, 0, kat_randombytes) != XMSS_OK) {
+        snprintf(label, sizeof(label), "%s: keygen", v->name);
+        TEST(label, 0);
+        goto done;
+    }
 
     /* Verify PK fingerprint (skip 4-byte OID to match reference layout) */
     shake128_local(fp, 10, pk + 4, p.pk_bytes - 4);
@@ -113,16 +119,21 @@ static void run_kat(const kat_vector_t *v)
     }
 
     /* Advance BDS state to idx=512 by signing dummy messages */
-    {
-        uint32_t target_idx = (uint32_t)1 << (p.h - 1);  /* 512 for h=10 */
-        uint8_t dummy[1] = {0};
-        for (i = 0; i < target_idx; i++) {
-            xmss_sign(&p, sig, dummy, 1, sk, state, 0);
+    target_idx = (uint32_t)1 << (p.h - 1);  /* 512 for h=10 */
+    for (i = 0; i < target_idx; i++) {
+        if (xmss_sign(&p, sig, dummy, 1, sk, state, 0) != XMSS_OK) {
+            snprintf(label, sizeof(label), "%s: advance sign idx=%u", v->name, i);
+            TEST(label, 0);
+            goto done;
         }
     }
 
     /* Sign the KAT message at idx=512 */
-    xmss_sign(&p, sig, msg, 1, sk, state, 0);
+    if (xmss_sign(&p, sig, msg, 1, sk, state, 0) != XMSS_OK) {
+        snprintf(label, sizeof(label), "%s: kat sign", v->name);
+        TEST(label, 0);
+        goto done;
+    }
 
     /* Verify signature fingerprint */
     shake128_local(fp, 10, sig, p.sig_bytes);
@@ -143,6 +154,7 @@ static void run_kat(const kat_vector_t *v)
         TEST(label, rc == XMSS_OK);
     }
 
+done:
     free(pk);
     free(sk);
     free(sig);
