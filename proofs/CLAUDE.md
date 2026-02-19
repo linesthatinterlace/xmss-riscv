@@ -127,7 +127,46 @@ All proof bodies have been filled in:
 
 ## What remains to be done
 
-- **Review**: The proofs should be checked by a mathematically
+- **Lemma 1 Part 3 (addresses) is imprecise and needs tightening.**
+  The current statement is:
+
+  > 3. **Addresses**: every internal hash call made during the
+  >    computation of Tree(h_i, s_i) used the canonical address
+  >    addr(ℓ, τ, ·, ·).
+
+  The `·, ·` dots hide the actual claim. The proof body *does* establish
+  that each merge producing a node at height h' with starting leaf s'
+  uses addr(ℓ, τ, h', s'/2^h') — matching the recursive definition —
+  but the invariant *statement* doesn't say this. This makes the address
+  claim hard to audit. The fix: replace the dots with the precise
+  assertion, e.g.:
+
+  > 3. **Addresses**: every hash-tree merge that produced a node
+  >    Tree(h', s') (in this or any previous iteration) used the
+  >    address addr(ℓ, τ, h', s'/2^{h'}), matching the recursive
+  >    definition.
+
+  Related: the connection between the address the algorithm computes
+  (floor(idx / 2^{t+1})) and the address the recursive definition
+  requires (s_L^{(t)} / 2^{t+1}) is established in the proof (via the
+  bit condition) but could be stated more explicitly as the key bridge.
+
+- **XMSS-MT address argument may look too lightweight.** The current
+  §6 decomposes into Lemma 1 (inner fields) + Lemma 2 (outer fields).
+  This decomposition is correct — the reason it looks simple is that
+  Lemma 1 already handles arbitrary aligned s, so the s≠0 generality
+  XMSS-MT needs is baked in from the start. But a reader might worry
+  the XMSS-MT case is being hand-waved. Consider:
+  - Making explicit that ℓ and τ in Lemma 1 are *parameters* (fixed
+    for the entire treehash call), not claims about what Algorithm 9
+    does with them. Lemma 2 is what establishes the algorithm preserves
+    them.
+  - Clarifying that treeIndex in XMSS-MT is the node's index within
+    the tree identified by (ℓ, τ), and that the proof's floor(idx/2^m)
+    gives this local-to-the-tree index because s is the starting leaf
+    within that tree.
+
+- **General review**: The proofs should be checked by a mathematically
   sophisticated reader. Lemma 1 (the stack invariant induction) is the
   main proof and deserves the most scrutiny. Lemma 0 is supporting
   arithmetic.
