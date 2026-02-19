@@ -280,58 +280,83 @@ The top two stack entries both have height $t$: one from the binary
 decomposition of $k$ (the IH entry at bit position $t$), the other from
 the previous merge (or the pushed leaf, if $t = 0$).
 
-By the IH and construction, the left (lower) entry holds
-$\mathsf{Tree}(t, s_L)$ and the right (upper) entry holds
-$\mathsf{Tree}(t, s_R)$ where $s_R = s_L + 2^t$. (For $t = 0$: the left
-entry is $\mathsf{Tree}(0, s + k - 1)$ from the stack at iteration $k$,
-and the right entry is $\mathsf{Tree}(0, s + k)$, the just-pushed leaf.
-For $t > 0$: the left entry is from the stack at iteration $k$, and the
-right entry is the result of merge $t-1$.)
+We write $s_L^{(t)}$ for the starting leaf of the left (lower) entry
+at this merge. The left entry holds $\mathsf{Tree}(t, s_L^{(t)})$
+(from the IH) and the right entry holds $\mathsf{Tree}(t, s_R^{(t)})$
+where $s_R^{(t)} = s_L^{(t)} + 2^t$ (from the IH and construction).
 
-**Address correctness for this merge.** The merged node is at height
-$t + 1$; its canonical address requires treeIndex $= s_L / 2^{t+1}$.
+**Identifying $s_L^{(t)}$.** We claim $s_L^{(t)} = \mathsf{idx} - 2^{t+1} + 1$,
+i.e. the two children together cover the $2^{t+1}$ leaves ending at
+$\mathsf{idx} = s + k$.
+
+*For $t = 0$*: the left entry is the IH's topmost entry (height $0$),
+which by the IH has starting leaf
+$s + \sum_{j < |\sigma|-1} 2^{h_j} = s + (k - 1) = \mathsf{idx} - 1$.
+The right entry is the pushed leaf at $\mathsf{idx}$. So
+$s_L^{(0)} = \mathsf{idx} - 1 = \mathsf{idx} - 2^1 + 1$. $\checkmark$
+
+*For $t > 0$*: the right entry is the result of merge $t{-}1$, which
+(by the case $t{-}1$ of this analysis) covers $2^t$ leaves ending at
+$\mathsf{idx}$, starting at $\mathsf{idx} - 2^t + 1$. The left entry
+is the IH entry at height $t$, which by contiguity of the IH's subtree
+decomposition ends where the right child begins: its range is
+$[s_L^{(t)},\; \mathsf{idx} - 2^t + 1)$, of size $2^t$. So
+$s_L^{(t)} = \mathsf{idx} - 2^t + 1 - 2^t = \mathsf{idx} - 2^{t+1} + 1$. $\checkmark$
+
+**Bit condition.** Since $t < r$, bits $0$ through $t$ of
+$k = \mathsf{idx} - s$ are all $1$. Because $2^h \mid s$ (with $h > t$),
+the low $t + 1$ bits of $s$ are $0$, so bits $0$ through $t$ of
+$\mathsf{idx} = s + k$ are also all $1$. In particular,
+$\mathsf{idx} \bmod 2^{t+1} = 2^{t+1} - 1$.
+
+**Address correctness.** The merged node is at height $t + 1$; its
+canonical address requires treeIndex $= s_L^{(t)} / 2^{t+1}$.
+
+By the bit condition:
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor \cdot 2^{t+1}
+= \mathsf{idx} - (\mathsf{idx} \bmod 2^{t+1})
+= \mathsf{idx} - (2^{t+1} - 1) = s_L^{(t)}$.
+So $\lfloor \mathsf{idx} / 2^{t+1} \rfloor = s_L^{(t)} / 2^{t+1}$. $\checkmark$
 
 The closed-form formula computes
 $(s \gg (t{+}1)) + ((\mathsf{idx} - s) \gg (t{+}1))$, which equals
-$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$ by Lemma 0(a). This is the
-global index of the unique node at height $t + 1$ whose leaf range
-contains $\mathsf{idx}$; its leftmost leaf is
-$\lfloor \mathsf{idx} / 2^{t+1} \rfloor \cdot 2^{t+1} = s_L$, so
-$\lfloor \mathsf{idx} / 2^{t+1} \rfloor = s_L / 2^{t+1}$. $\checkmark$
+$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$ by Lemma 0(a). $\checkmark$
 
-The stateful formula (Figure 1a) reaches the same value: at merge $t$,
-the map $x \mapsto (x{-}1)/2$ has been applied $t + 1$ times to
-$\mathsf{idx}$. Since bits $0$ through $t$ of $k = \mathsf{idx} - s$
-are all $1$ (because $t < r$) and the low bits of $s$ are all $0$
-(because $2^h \mid s$), bits $0$ through $t$ of $\mathsf{idx}$ are also
-all $1$. Lemma 0(b) gives
-$\lfloor \mathsf{idx} / 2^{t+1} \rfloor$. $\checkmark$
+The stateful formula (Figure 1a) reaches the same value: the map
+$x \mapsto (x{-}1)/2$ has been applied $t + 1$ times to $\mathsf{idx}$,
+and the bit condition gives $\lfloor \mathsf{idx} / 2^{t+1} \rfloor$
+by Lemma 0(b). $\checkmark$
 
-**Value correctness for this merge.** By the recursive definition:
+**Value correctness.** By the recursive definition:
 
-$$\mathsf{Tree}(t+1, s_L) = H\!\left(\mathsf{addr}(\ell, \tau, t+1, s_L / 2^{t+1}),\; \mathsf{Tree}(t, s_L),\; \mathsf{Tree}(t, s_L + 2^t)\right)$$
+$$\mathsf{Tree}(t+1, s_L^{(t)}) = H\!\left(\mathsf{addr}(\ell, \tau, t+1, s_L^{(t)} / 2^{t+1}),\; \mathsf{Tree}(t, s_L^{(t)}),\; \mathsf{Tree}(t, s_L^{(t)} + 2^t)\right)$$
 
-The merge uses the correct address ($s_L / 2^{t+1}$ as shown above),
-the correct left child ($\mathsf{Tree}(t, s_L)$), and the correct right
-child ($\mathsf{Tree}(t, s_R) = \mathsf{Tree}(t, s_L + 2^t)$). So the
-result is $\mathsf{Tree}(t+1, s_L)$. $\checkmark$
+The merge uses the correct address ($s_L^{(t)} / 2^{t+1}$ as shown above),
+the correct left child, and the correct right child
+($s_R^{(t)} = s_L^{(t)} + 2^t$). So the result is
+$\mathsf{Tree}(t+1, s_L^{(t)})$. $\checkmark$
 
-**Step 4: Resulting stack.** After $r$ merges, the $r$ entries at heights
-$0, 1, \ldots, r{-}1$ (from the binary decomposition of $k$) and the
-pushed leaf have been replaced by a single entry at height $r$, holding
-$\mathsf{Tree}(r, s')$ for the appropriate $s'$. The remaining entries
-(at heights corresponding to bits $> r$ of $k$, which are the same as
-bits $> r$ of $k + 1$) are unchanged. The resulting stack heights are
-the set-bit positions of $k + 1$, in decreasing order.
+**Step 4: Resulting stack.** After $r$ merges, the $r$ IH entries at
+heights $0, 1, \ldots, r{-}1$ and the pushed leaf have been replaced by
+a single entry at height $r$, holding $\mathsf{Tree}(r, s')$ where
+$s' = s_L^{(r-1)} = \mathsf{idx} - 2^r + 1 = s + k - 2^r + 1$.
 
-**Verification of starting indices.** The canonical subtree decomposition
-of the interval $[s, s + k + 1)$ is obtained from that of $[s, s + k)$ by
-the same carry-propagation logic: the $r$ subtrees at heights
-$0, 1, \ldots, r{-}1$ (plus the new leaf) merge into one subtree at
-height $r$. The starting index of each remaining (unmerged) subtree is
-unchanged, and the starting index of the new height-$r$ subtree is the
-starting index of the old height-$0$ subtree that participated in the
-first merge. This matches the stack. $\checkmark$
+The remaining entries (at heights corresponding to bits $> r$ of $k$,
+which are the same as bits $> r$ of $k + 1$) are unchanged. The
+resulting stack heights are the set-bit positions of $k + 1$, in
+decreasing order.
+
+**Verification of starting indices.** We must check Part 2 of the
+invariant for $k + 1$. The starting leaf of the new height-$r$ entry
+is $s' = s + k - 2^r + 1$. By the Part 2 formula, it should equal
+$s + \sum_{j < i'} 2^{h_j}$, where the sum is over entries below it in
+the new stack. These are exactly the unchanged IH entries at bit
+positions $> r$ of $k$, whose sizes sum to
+$k - (2^0 + 2^1 + \cdots + 2^{r-1}) = k - (2^r - 1)$. So the formula
+gives $s + k - 2^r + 1 = s'$. $\checkmark$
+
+The unchanged entries retain their IH starting leaves (the entries below
+them are also unchanged). $\checkmark$
 
 **Address correctness.** Every hash call in the merge loop uses a
 canonical address by the argument in Step 3 (via Lemma 0). Hash calls
