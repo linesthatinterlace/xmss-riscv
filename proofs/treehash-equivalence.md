@@ -1,6 +1,6 @@
 # Treehash Equivalence: Recursive and Iterative Definitions
 
-**Status**: complete — all proofs filled in; ready for review.
+**Status**: draft — all proof bodies filled in; under review.
 
 ---
 
@@ -125,10 +125,10 @@ for i = 0 to 2^h - 1:
 return pop(σ)
 ```
 
-**Figure 1b: C implementation (closed-form address)**
+**Figure 1b: Closed-form address variant**
 
-The C implementation (introduced in the initial commit) computes treeIndex
-from scratch at each merge, with no carried address state between iterations:
+This variant computes treeIndex from scratch at each merge, with no
+carried address state between iterations:
 
 ```
 Stack σ := []
@@ -155,19 +155,17 @@ height `node_h`, without reference to any previous iteration's address state.
 
 ### 4.0 The Address Formula Lemma
 
-**This is a central proof obligation.** The C implementation deliberately
-diverges from the RFC pseudocode in how it computes treeIndex. The two
-formulas must be shown to always agree, or the C implementation is not a
-correct realisation of RFC 8391 — regardless of whether the node *values*
-are correct.
+The two variants in Figures 1a and 1b differ only in how they compute
+treeIndex at each merge. The following lemma shows the two formulas
+always agree, so the variants are interchangeable.
 
 **Lemma 0 (Address formula equivalence).** Suppose $s$ is a multiple of
 $2^h$ (the alignment precondition). At any merge performed during the
 processing of leaf $\mathsf{idx} \in [s, s + 2^h)$ at children's height
 $\mathsf{node\_h}$:
 
-1. The RFC stateful formula and the C closed-form formula both produce the
-   same treeIndex value $j$.
+1. The stateful formula (Figure 1a) and the closed-form formula
+   (Figure 1b) both produce the same treeIndex value $j$.
 
 2. Explicitly: letting $q = (\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)$,
    we have:
@@ -232,7 +230,7 @@ This is the binary carry precondition. $\square_3$
 
 ---
 
-**Part 2 (C closed-form formula gives the correct global index).**
+**Part 2 (closed-form formula gives the correct global index).**
 
 A node at height $h'$ whose leftmost descendant leaf has global index
 $s'$ (with $2^{h'} \mid s'$) has global node-index $s' / 2^{h'}$.
@@ -244,7 +242,7 @@ at height $h' = \mathsf{node\_h} + 1$. Its correct global index is:
 
 $$j = \left\lfloor \frac{\mathsf{idx}}{2^{\mathsf{node\_h}+1}} \right\rfloor$$
 
-We verify that the C formula computes exactly this. Write $m = \mathsf{node\_h} + 1$.
+We verify that the closed-form formula computes exactly this. Write $m = \mathsf{node\_h} + 1$.
 Since $s$ is a multiple of $2^h$ and $m \leq h$, $s$ is a multiple of $2^m$, so
 $s \gg m = s / 2^m$ is exact (no rounding). Therefore:
 
@@ -256,9 +254,9 @@ $$\left\lfloor \frac{\mathsf{idx}}{2^m} \right\rfloor = \frac{s}{2^m} + \left\lf
 
 where the first equality uses the fact that $s / 2^m$ is an integer.
 
-Since $i = \mathsf{idx} - s$, the C formula
+Since $i = \mathsf{idx} - s$, the formula of Figure 1b —
 $(s \gg (\mathsf{node\_h}+1)) + ((\mathsf{idx} - s) \gg (\mathsf{node\_h}+1))$
-equals $\lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$, which is the
+— equals $\lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$, which is the
 correct global index of the parent node. $\square_2$
 
 ---
@@ -310,7 +308,7 @@ gives:
 
 $$\mathsf{treeIndex}_{\text{RFC}} = \left\lfloor \frac{\mathsf{idx}}{2^{\mathsf{node\_h}+1}} \right\rfloor$$
 
-By Part 2, this equals the C closed-form value. $\square_1$
+By Part 2, this equals the closed-form value. $\square_1$
 
 ---
 
@@ -322,18 +320,15 @@ Both algorithms also set $\mathsf{treeHeight} = \mathsf{node\_h}$ (the
 children's height), matching the RFC convention. $\square$
 
 **Remark (alignment).** The condition $s \equiv 0 \pmod{2^h}$ is what makes
-$s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). The RFC checks this
-explicitly: `if (s % (1 << t) != 0) return -1`. Without it, the C formula
-gives the wrong global index.
+$s \gg (\mathsf{node\_h} + 1)$ exact (no rounding). Algorithm 9 checks this
+explicitly: `if (s % (1 << t) != 0) return -1`. Without it, the closed-form
+formula gives the wrong global index.
 
-**Remark (xmss-reference).** The reference implementation (`third_party/xmss-reference/xmss_core.c`)
-also uses the closed-form approach rather than the RFC's stateful formula,
-and its author explicitly comments on the address convention: *"tree height
-is the 'lower' layer, even though we use the index of the new node on the
-'higher' layer."* However, the reference always starts from $s = 0$ and
-iterates over the whole tree, so it only needs `idx >> (node_h + 1)`.
-The generalisation to arbitrary $s$ — giving `(s >> (node_h+1)) + ((idx-s) >> (node_h+1))` —
-is specific to our implementation and is the novel part requiring proof.
+**Remark (special case $s = 0$).** When $s = 0$, the closed-form formula
+simplifies to $(\mathsf{idx} - s) \gg (\mathsf{node\_h} + 1)
+= \mathsf{idx} \gg (\mathsf{node\_h} + 1)$, since the $s$-term vanishes.
+The general case $s \neq 0$ arises in XMSS-MT (subtrees at non-zero
+offsets) and in naive auth-path computation.
 
 ---
 
@@ -429,8 +424,8 @@ The merge computes:
 
 $$v = H\!\left(\mathsf{addr}(\ell, \tau, t+1, j),\; \mathsf{Tree}(t, s_L),\; \mathsf{Tree}(t, s_R)\right)$$
 
-where $j$ is the address computed by the C formula (or equivalently the
-RFC formula, by Lemma 0). By Lemma 0 Part 2, $j = \lfloor \mathsf{idx} / 2^{t+1} \rfloor$, which is the global index of the node at height $t+1$
+where $j$ is the treeIndex computed by either formula (they agree by
+Lemma 0 Part 1). By Lemma 0 Part 2, $j = \lfloor \mathsf{idx} / 2^{t+1} \rfloor$, which is the global index of the node at height $t+1$
 whose leaf range contains $\mathsf{idx}$. This node's leftmost leaf is
 $j \cdot 2^{t+1} = s_L$, confirming $j = s_L / 2^{t+1}$.
 
@@ -508,35 +503,25 @@ The additional difficulty over the single-tree case is:
 with outer fields $(\ell, \tau)$ and start $s$, every hash call inside uses
 an address with $\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$.
 
-**Proof.** By inspection of the C implementation (`impl/c/src/treehash.c`)
-and, correspondingly, of Algorithm 9 in the RFC.
+**Proof.** By inspection of Algorithm 9 (Figures 1a/1b).
 
-Every address used inside $\mathsf{treehash}$ is constructed by first
-copying the caller-provided address $\mathsf{adrs}$:
+Every address used inside $\mathsf{treehash}$ is constructed by copying
+the caller-provided address $\mathsf{adrs}$ and then modifying only
+*inner* fields: $\mathsf{type}$, and whichever type-specific fields
+apply ($\mathsf{OTS}$, $\mathsf{LTree}$, $\mathsf{treeHeight}$,
+$\mathsf{treeIndex}$, etc.).
 
-```c
-a = *adrs;
-```
+By the address structure (Appendix A), the outer fields $\mathsf{layer}$
+(word 0) and $\mathsf{tree}$ (words 1–2) are distinct from the type
+word (word 3) and the type-specific fields (words 4–7). The
+$\mathsf{setType}$ operation zeroes words 4–7 (per RFC 8391, §2.5) but
+does not touch words 0–2. No other operation in Algorithm 9 modifies
+words 0–2.
 
-(lines 79, 84, 90, and 105 of `treehash.c`). This structure copy
-preserves all fields, including $\mathsf{layer}$ and $\mathsf{tree}$.
-
-The subsequent mutations only modify *inner* fields — specifically
-$\mathsf{type}$, $\mathsf{treeHeight}$, $\mathsf{treeIndex}$,
-$\mathsf{OTS}$, and $\mathsf{LTree}$ — via the setter functions
-`xmss_adrs_set_type`, `xmss_adrs_set_tree_height`,
-`xmss_adrs_set_tree_index`, `xmss_adrs_set_ots`, and
-`xmss_adrs_set_ltree`. None of these modify bytes $0$–$11$ (the layer
-and tree fields).
-
-Moreover, per the RFC convention (§2.5), `setType` zeroes the words
-*following* the type word, but not the words *preceding* it (layer and
-tree are at offsets $0$–$11$, preceding the type word at offset $12$).
-
-Therefore, every hash call — whether for OTS key generation, L-tree
-compression, or hash-tree merging — uses an address with
+Therefore, every address used inside $\mathsf{treehash}$ — whether for
+OTS key generation, L-tree compression, or hash-tree merging — carries
 $\mathsf{layer} = \ell$ and $\mathsf{tree} = \tau$, inherited from the
-caller. $\square$
+caller's $\mathsf{adrs}$. $\square$
 
 **Theorem 2 (Iterative–recursive equivalence, XMSS-MT).** For each layer
 $\ell \in [0, d)$ and tree-index $\tau$, the iterative treehash with outer
@@ -582,7 +567,7 @@ A mechanised proof in EasyCrypt (or similar) will need to:
 - Represent the stack as a concrete data structure with a bounded-size
   invariant; the bound $h+1$ follows from Lemma 1(1).
 - State the loop invariant (Lemma 1) as a loop annotation in a program logic.
-- Handle the address arithmetic (`j := idx >> (node_h + 1)`) concretely;
+- Handle the address arithmetic ($j = \lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$) concretely;
   this is where most of the arithmetic reasoning lives.
 - Lift from the single-tree to the multi-tree case by parametrising over
   $(\ell, \tau)$ and showing independence of inner-field computations from
@@ -656,15 +641,12 @@ significant) and 2 (least significant).
 **Domain separation rule (RFC 8391, §2.5).** Whenever the type word
 (word 3) is changed, words 4–7 must be zeroed before any type-specific
 fields are set. This prevents stale field values from a previous type
-from leaking into the new address. The C implementation enforces this
-in `xmss_adrs_set_type()` (`address.c`, line 38–42).
+from leaking into the new address.
 
-**Serialisation.** The `xmss_adrs_to_bytes` function serialises the 8
-words in order, each in big-endian, producing the 32-byte value passed
-to hash functions. For a mechanised proof, the address is most
-conveniently modelled as an array of 8 words with big-endian
-interpretation, matching the C struct `xmss_adrs_t` which stores
-words in native-endian and serialises on demand.
+**Serialisation.** The 8 words are serialised in order, each in
+big-endian, producing the 32-byte value passed to hash functions. For a
+mechanised proof, the address is most conveniently modelled as an array
+of 8 unsigned 32-bit words with big-endian serialisation.
 
 **Errata 7900 note.** Errata 7900 corrects the SK serialisation byte
 layout but does not affect the ADRS structure. The address layout above

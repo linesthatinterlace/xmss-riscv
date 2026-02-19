@@ -7,8 +7,8 @@ implementations in `impl/`. Currently contains one document:
 
 - `treehash-equivalence.md` — proof of the equivalence of the
   iterative and recursive definitions of the XMSS Merkle tree, for both
-  XMSS and XMSS-MT. **Status: complete — all proof bodies filled in;
-  ready for review.**
+  XMSS and XMSS-MT. **Status: draft — all proof bodies filled in;
+  under review.**
 
 The goal is eventually to mechanise these proofs in EasyCrypt, but the
 immediate task is a clean, self-contained mathematical document. Do not
