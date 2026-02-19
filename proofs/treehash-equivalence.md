@@ -93,7 +93,7 @@ $$\mathsf{Tree}(0, i) \;:=\; \mathsf{leaf}(i;\, \mathsf{SK},\, \mathsf{PK\_SEED}
 
 $$\mathsf{Tree}(h, s) \;:=\; H\!\left(\mathsf{addr}(\ell, \tau, h, s/2^h),\;\; \mathsf{Tree}(h-1, s),\;\; \mathsf{Tree}(h-1, s + 2^{h-1})\right)$$
 
-The *root* of the XMSS tree is $\mathsf{Tree}(H, 0)$ where $H$ is the tree height.
+The *root* of the XMSS tree is $\mathsf{Tree}(h, 0)$.
 
 ### 3.2 Iterative definition (Algorithm 9)
 
@@ -101,8 +101,8 @@ The iterative algorithm maintains a stack $\sigma$ of pairs $(v, k)$ where $v$
 is an $n$-byte node value and $k \geq 0$ is its height.
 
 There are two variants of interest, which differ only in how they compute the
-address for each merge. Both are given here because establishing their
-equivalence is a central proof obligation (see Lemma 0 below).
+address for each merge. Their equivalence is established by straightforward
+arithmetic (Lemma 0).
 
 **Figure 1a: RFC 8391 Algorithm 9 (stateful address)**
 
@@ -215,8 +215,9 @@ the stack $\sigma$ satisfies:
 
 2. **Values**: if the $i$-th stack entry (from the bottom, 0-indexed) has
    height $h_i$, then its value is $\mathsf{Tree}(h_i,\, s_i)$, where
-   $s_i = s + \sum_{j > i} 2^{h_j}$ is the starting leaf of the
-   corresponding canonical subtree.
+   $s_i = s + \sum_{j < i} 2^{h_j}$ is the starting leaf of the
+   corresponding canonical subtree. (That is, $s_i$ is $s$ plus the
+   total number of leaves covered by entries below entry $i$.)
 
 3. **Addresses**: every internal hash call made during the computation of
    $\mathsf{Tree}(h_i, s_i)$ used the canonical address $\mathsf{addr}(\ell, \tau, \cdot, \cdot)$.
@@ -347,22 +348,21 @@ $\mathsf{Tree}(h, s)$ with all internal hashes at canonical addresses.
 
 ## 5. Main Theorem: XMSS
 
-**Theorem 1 (Iterative–recursive equivalence, XMSS).** Let $p$ be an XMSS
-parameter set with tree height $H$. Let $\mathsf{SK}$, $\mathsf{PK\_SEED}$ be
-fixed. Then:
+**Theorem 1 (Iterative–recursive equivalence, XMSS).** Let $\mathsf{SK}$,
+$\mathsf{PK\_SEED}$ be fixed. Then:
 
-$$\mathsf{treehash}(\mathsf{SK}, \mathsf{PK\_SEED}, 0, 2^H) \;=\; \mathsf{Tree}(H, 0)$$
+$$\mathsf{treehash}(\mathsf{SK}, \mathsf{PK\_SEED}, 0, 2^h) \;=\; \mathsf{Tree}(h, 0)$$
 
 and every call to $H$ inside $\mathsf{treehash}$ uses the canonical address
 for the node it computes.
 
-**Proof.** Immediate from Lemma 1 at $k = 2^H$. $\square$
+**Proof.** Immediate from Lemma 1 at $k = 2^h$. $\square$
 
 ---
 
 ## 6. Extension to XMSS-MT
 
-XMSS-MT composes $d$ layers of XMSS trees, each of height $h' = H/d$.
+XMSS-MT composes $d$ layers of XMSS trees, each of height $h' = h/d$.
 A tree at layer $\ell$ and tree-index $\tau$ is computed by calling treehash
 with outer address fields fixed to $(\ell, \tau)$.
 
@@ -373,10 +373,10 @@ The additional difficulty over the single-tree case is:
   and $\mathsf{tree}$. The proof must track that these outer fields are
   consistently set for every hash call throughout the computation.
 
-- **Offset starts ($s \neq 0$)**: trees at layer $\ell > 0$ are indexed
-  within their layer; the starting leaf $s$ for a subtree call is not
-  necessarily 0. The address index formula must be shown to correctly
-  globalise the local node index.
+- **Offset starts ($s \neq 0$)**: while the full tree at each layer uses
+  $s = 0$, subtree computations (e.g. for auth paths) use $s \neq 0$.
+  Lemma 1 already handles arbitrary aligned $s$, so this requires no
+  additional argument beyond the outer-field tracking.
 
 **Lemma 2 (Outer-field consistency).** For any call to $\mathsf{treehash}$
 with outer fields $(\ell, \tau)$ and start $s$, every hash call inside uses
@@ -446,8 +446,9 @@ A mechanised proof in EasyCrypt (or similar) will need to:
 - Represent the stack as a concrete data structure with a bounded-size
   invariant; the bound $h+1$ follows from Lemma 1(1).
 - State the loop invariant (Lemma 1) as a loop annotation in a program logic.
-- Handle the address arithmetic ($j = \lfloor \mathsf{idx} / 2^{\mathsf{node\_h}+1} \rfloor$) concretely;
-  this is where most of the arithmetic reasoning lives.
+- Handle the address arithmetic (Lemma 0) and the carry-propagation
+  argument (Lemma 1 Step 3) concretely in the proof assistant's
+  integer/bitvector theory.
 - Lift from the single-tree to the multi-tree case by parametrising over
   $(\ell, \tau)$ and showing independence of inner-field computations from
   outer fields.
